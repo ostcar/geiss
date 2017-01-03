@@ -1,0 +1,12 @@
+[submodule "vendor/github.com/gorilla/websocket"]
+	path = vendor/github.com/gorilla/websocket
+	url = https://github.com/gorilla/websocket
+[submodule "vendor/github.com/garyburd/redigo"]
+	path = vendor/github.com/garyburd/redigo
+	url = https://github.com/garyburd/redigo
+[submodule "vendor/github.com/satori/go.uuid"]
+	path = vendor/github.com/satori/go.uuid
+	url = https://github.com/satori/go.uuid
+[submodule "vendor/gopkg.in/vmihailenco/msgpack.v2"]
+	path = vendor/gopkg.in/vmihailenco/msgpack.v2
+	url = https://gopkg.in/vmihailenco/msgpack.v2
