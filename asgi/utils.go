@@ -1,8 +1,15 @@
 package asgi
 
-import "math/rand"
+import (
+	"math/rand"
+	"time"
+)
 
 const channelLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
 
 // GetChannelnameRandom creates a random string that can be added as suffix to a
 // channel name

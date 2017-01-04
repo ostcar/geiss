@@ -35,6 +35,7 @@ func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
 			log.Printf("Could not receive the websocket message: %s", err)
 			return
 		}
+
 		// Send the message to the channel
 		read <- websocketMessage{Type: t, Content: m}
 	}
