@@ -15,9 +15,10 @@ Install
 
 First you have to set your gopath. See https://github.com/golang/go/wiki/GOPATH
 
-Then install vendetta::
+After cloning the repository you have to install the dependencys, which are
+git submoduls::
 
-    $ go get github.com/dpw/vendetta
+    $ git submodule update --init --recursive
 
 
 Configuration and start
