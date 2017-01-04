@@ -18,7 +18,7 @@ import (
 // Currently this can not be more the none second to stay compatible with applications
 // that do not send an accept message after an open websocket connection but do
 // use reconnecting-websocket.
-const blPopTimeout = 1
+const blPopTimeout = 10
 
 var luaChanSend *redis.Script
 

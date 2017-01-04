@@ -168,11 +168,9 @@ func (rm *ResponseMessage) Set(m Message) (err error) {
 	for _, value := range m["headers"].([]interface{}) {
 		// value should be a slice of interface{}
 		value := value.([]interface{})
-		headerKey := string(value[0].([]byte))
-		headerValue := string(value[1].([]byte))
-		rm.Headers[headerKey] = append(
-			rm.Headers[headerKey],
-			headerValue)
+		k := string(value[0].([]byte))
+		v := string(value[1].([]byte))
+		rm.Headers.Add(k, v)
 	}
 	return nil
 }

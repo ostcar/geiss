@@ -47,9 +47,16 @@ func forwardHTTPRequest(req *http.Request) (replyChannel string, err error) {
 func receiveHTTPResponse(w http.ResponseWriter, replyChannel string) (err error) {
 	// Get message from the channel layer.
 	var rm asgi.ResponseMessage
-	c, err := channelLayer.Receive([]string{replyChannel}, true, &rm)
-	if err != nil {
-		return fmt.Errorf("could not get a message: %s", err)
+	var c string
+	for i := 0; i < 100; i++ {
+		c, err = channelLayer.Receive([]string{replyChannel}, true, &rm)
+		if err != nil {
+			return fmt.Errorf("could not get a message: %s", err)
+		}
+		if c != "" {
+			// Got a response
+			break
+		}
 	}
 	if c == "" {
 		// Did not receive any response. Propably got an timeout.
@@ -57,10 +64,8 @@ func receiveHTTPResponse(w http.ResponseWriter, replyChannel string) (err error)
 	}
 
 	// Write the headers from the response message to the http resonse
-	for k, vl := range rm.Headers {
-		for _, v := range vl {
-			w.Header().Add(k, v)
-		}
+	for k, v := range rm.Headers {
+		w.Header()[k] = v
 	}
 
 	// Set the status code of the http response and write the first part of the content
@@ -91,12 +96,12 @@ func asgiHTTPHandler(w http.ResponseWriter, req *http.Request) error {
 	// Forward the request to the channel layer and get the reply channel name.
 	replyChannel, err := forwardHTTPRequest(req)
 	if err != nil {
-		return fmt.Errorf("Could not send message to the channel layer. Got %s", err)
+		return fmt.Errorf("Could not send message to the channel layer: %s", err)
 	}
 
 	// Receive the response from the channel layer and write it to the http response.
-	if receiveHTTPResponse(w, replyChannel); err != nil {
-		return fmt.Errorf("Could not receive message from the channel layer. Got %s", err)
+	if err = receiveHTTPResponse(w, replyChannel); err != nil {
+		return fmt.Errorf("Could not receive message from the channel layer: %s", err)
 	}
 	return nil
 }

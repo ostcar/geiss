@@ -30,6 +30,7 @@ func asgiHandler(w http.ResponseWriter, req *http.Request) {
 
 	err = asgiHTTPHandler(w, req)
 	if err != nil {
+		log.Printf("Error: %s\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
