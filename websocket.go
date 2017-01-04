@@ -63,14 +63,16 @@ func processChannelLayerReceive(channel string, receive chan asgi.SendCloseAccep
 	for {
 		// Read from the channel layer.
 		var am asgi.SendCloseAcceptMessage
-		_, err := channelLayer.Receive([]string{channel}, true, &am)
+		c, err := channelLayer.Receive([]string{channel}, true, &am)
 		if err != nil {
 			log.Printf("could not get the message: %s", err)
 			break
 		}
-
-		// Send the received value to the channel.
-		receive <- am
+		if c != "" {
+			// If we read the message from the channel (no timeout) then:
+			// Send the received value to the channel.
+			receive <- am
+		}
 	}
 	close(receive)
 }
