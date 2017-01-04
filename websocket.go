@@ -22,25 +22,10 @@ type websocketMessage struct {
 	Content []byte
 }
 
-// Processes the read and write actions of a websocket connection. You can read
-// from the read channel to get messages and write them to the write channel
-// to send them. The websocket connection is closed, if the write channels is
-// closed.
-func processWebsocket(conn *websocket.Conn, read, write chan websocketMessage) {
-	go func() {
-		for message := range write {
-			// Write messages from the write channel to the websocket connection.
-			err := conn.WriteMessage(message.Type, message.Content)
-			if err != nil {
-				log.Printf("Could not send message: %s", err)
-				break
-			}
-		}
-		// If an error happens or the write channel is closed: close the websocket
-		// connection.
-		conn.Close()
-	}()
-
+// Read from a websocket connection and write any message to the read channel.
+func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
+	defer close(read)
+	defer conn.Close()
 	for {
 		// Read messages from the websocket connection and write them to the write
 		// channel.
@@ -48,18 +33,17 @@ func processWebsocket(conn *websocket.Conn, read, write chan websocketMessage) {
 		if err != nil {
 			// If the websocket connection was closed, then err will be != nil.
 			log.Printf("Could not receive the websocket message: %s", err)
-			break
+			return
 		}
 		// Send the message to the channel
 		read <- websocketMessage{Type: t, Content: m}
 	}
 	// If an error happens, close the websocket connection.
-	conn.Close()
 }
 
 // Read from a channel (expecting a websocket.send!*** channel) and sends
 // any data to the receive channel. Closes the channel if anything goes wrong.
-func processChannelLayerReceive(channel string, receive chan asgi.SendCloseAcceptMessage) {
+func readChannelLayer(channel string, receive chan asgi.SendCloseAcceptMessage) {
 	for {
 		// Read from the channel layer.
 		var am asgi.SendCloseAcceptMessage
@@ -190,19 +174,22 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) error {
 	// Close the websocket connection in the end.
 	defer conn.Close()
 
-	// Create goroutines to read/write to the websocket connection and the channel
+	// Create goroutines to read to the websocket connection and the channel
 	// layer at the same time.
 	read := make(chan websocketMessage)
-	write := make(chan websocketMessage)
 	receive := make(chan asgi.SendCloseAcceptMessage)
 	order := 0
-	go processWebsocket(conn, read, write)
-	go processChannelLayerReceive(replyChannel, receive)
+	go readWebsocket(conn, read)
+	go readChannelLayer(replyChannel, receive)
 
 	for {
 		select {
-		case r := <-read:
+		case r, ok := <-read:
 			// Received a message from the client
+			if !ok {
+				// The channel was closed. An error happend. So close the connection
+				return nil
+			}
 			order++
 			message := asgi.ReceiveMessage{
 				ReplyChannel: replyChannel,
@@ -230,16 +217,21 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) error {
 			}
 
 			// Send the message to the websocket connection
+			var t int
+			var content []byte
 			if r.Text != "" {
-				write <- websocketMessage{
-					Type:    websocket.TextMessage,
-					Content: []byte(r.Text),
-				}
+				t = websocket.TextMessage
+				content = []byte(r.Text)
+			} else if r.Bytes != nil {
+				t = websocket.BinaryMessage
+				content = r.Bytes
 			} else {
-				write <- websocketMessage{
-					Type:    websocket.BinaryMessage,
-					Content: r.Bytes,
-				}
+				// Got an message without data. Skip it.
+				continue
+			}
+			if err = conn.WriteMessage(t, content); err != nil {
+				log.Printf("Could not send message: %s", err)
+				return nil
 			}
 		}
 	}
