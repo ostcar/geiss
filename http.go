@@ -74,13 +74,20 @@ func receiveHTTPResponse(w http.ResponseWriter, replyChannel string) (err error)
 
 	// If there is more content, then receive it
 	moreContent := rm.MoreContent
-	for moreContent {
+	for i:= 0; i < 100 && moreContent; i++ {
 		// Get message from the channel layer
 		var rcm asgi.ResponseChunkMessage
-		_, err := channelLayer.Receive([]string{replyChannel}, true, &rcm)
+		c, err := channelLayer.Receive([]string{replyChannel}, true, &rcm)
 		if err != nil {
 			return fmt.Errorf("could not receive a message: %s", err)
 		}
+		if c == "" {
+			// Did not get any message
+			continue
+		}
+
+		// Got a message. Reset counter.
+		i = 0
 
 		// Write the received content to the http response.
 		w.Write(rcm.Content)
