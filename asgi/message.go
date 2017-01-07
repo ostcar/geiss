@@ -241,7 +241,26 @@ func (cm *ReceiveMessage) Raw() Message {
 	return m
 }
 
-// TODO: Implement the "Disconnection" message.
+// DisconnectionMessage is a structured message defined by the asgi specs. It is
+// send to the channel layer when the connection was closed for any reason.
+// It differs from the asgi specs that all fields are Uppercase and CamelCase.
+type DisconnectionMessage struct {
+	ReplyChannel string
+	Code         int
+	Path         string
+	Order        int
+}
+
+// Raw converts a DisconnectionMessage to a Message, that can be send through
+// the channel layer.
+func (dm *DisconnectionMessage) Raw() Message {
+	m := make(Message)
+	m["reply_channel"] = dm.ReplyChannel
+	m["code"] = dm.Code
+	m["path"] = dm.Path
+	m["order"] = dm.Order
+	return m
+}
 
 // SendCloseAcceptMessage is a structured message defined by the asgi specs. It
 // is used as answer from the channel layer after a websocket connection and to s

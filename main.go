@@ -44,6 +44,8 @@ func httpLogger(handler http.Handler) http.Handler {
 }
 
 func main() {
+	listen := ":8000"
 	http.HandleFunc("/", asgiHandler)
-	log.Fatal(http.ListenAndServe(":8000", httpLogger(http.DefaultServeMux)))
+	log.Printf("Start webserver to listen on %s", listen)
+	log.Fatal(http.ListenAndServe(listen, httpLogger(http.DefaultServeMux)))
 }
