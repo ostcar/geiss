@@ -12,10 +12,9 @@ Install
 
 First you have to set your gopath. See https://github.com/golang/go/wiki/GOPATH
 
-After cloning the repository you have to install the dependencys, which are
-git submoduls::
+Then download and compile the server by calling::
 
-    $ git submodule update --init --recursive
+  $ go get github.com/ostcar/goasgiserver
 
 
 Configuration and start
@@ -27,16 +26,16 @@ port 6379. It opens the webserver on port 8000.
 
 The server can be started be running::
 
-    $ go run *.go
+    $ $GOPATH/bin/goasgiserver
 
-or build the software and run the executalbe::
+or::
 
-    $ go build
-    $ ./goasgiserver
+    $ export PATH=$PATH:$GOPATH/bin
+    $ goasgiserver
 
 
-Full example
-------------
+Full channels example
+---------------------
 
 Currently this software runs for all examples in
 
@@ -50,6 +49,7 @@ You can test it with::
     $ source .virtualenv/bin/activate
     $ pip install -r requirements.txt
     $ python manage.py migrate
-    $ python manage.py runworker
+    $ python manage.py runworker &
+    $ goasgiserver
 
-Then start this software and connect to localhost:8000
+Then start a webserver and connect to localhost:8000
