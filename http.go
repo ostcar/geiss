@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"goasgiserver/asgi"
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"github.com/ostcar/goasgiserver/asgi"
 )
 
 const httpResponseWait = 10

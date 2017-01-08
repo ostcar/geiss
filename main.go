@@ -4,10 +4,11 @@ This is an asgi protocol server and should be an alternative to daphne.
 package main
 
 import (
-	"goasgiserver/asgi"
-	"goasgiserver/asgi/redis"
 	"log"
 	"net/http"
+
+	"github.com/ostcar/goasgiserver/asgi"
+	"github.com/ostcar/goasgiserver/asgi/redis"
 
 	"github.com/gorilla/websocket"
 )

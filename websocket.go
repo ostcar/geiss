@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"goasgiserver/asgi"
 	"log"
 	"net/http"
+
+	"github.com/ostcar/goasgiserver/asgi"
 
 	"github.com/gorilla/websocket"
 )
