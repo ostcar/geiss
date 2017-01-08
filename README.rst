@@ -6,9 +6,6 @@ an alternative to daphne.
 
 See https://channels.readthedocs.io/en/latest/asgi.html for more informations.
 
-I build this software to learn the language go. I will propably not have the
-time to finish it or fix any bug. So please do not use this in production!
-
 
 Install
 -------

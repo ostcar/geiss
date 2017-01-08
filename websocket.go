@@ -20,19 +20,25 @@ type websocketMessage struct {
 
 	// Value to send through the websocket connection.
 	Content []byte
+
+	// Websocket Error. Should only set if the othre values are not set.
+	Err *websocket.CloseError
 }
 
 // Read from a websocket connection and write any message to the read channel.
 func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
 	defer close(read)
-	defer conn.Close()
+
 	for {
 		// Read messages from the websocket connection and write them to the write
 		// channel.
 		t, m, err := conn.ReadMessage()
 		if err != nil {
-			// If the websocket connection was closed, then err will be != nil.
-			log.Printf("Could not receive the websocket message: %s", err)
+			if err, ok := err.(*websocket.CloseError); ok {
+				read <- websocketMessage{Err: err}
+			} else {
+				log.Printf("Could not receive the websocket message: %s", err)
+			}
 			return
 		}
 
@@ -95,14 +101,12 @@ func forwardWebsocketConnection(req *http.Request) (replyChannel string, err err
 
 // Handles the response after a websocket connection. Returns the websocket connection
 // if it was opend.
-func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, *int, error) {
-	order := 0
-
+func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, error) {
 	// Get a message from the channel layer.
 	var am asgi.SendCloseAcceptMessage
 	n, err := channelLayer.Receive([]string{channel}, true, &am)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not get the message: %s", err)
+		return nil, fmt.Errorf("could not get the message: %s", err)
 	}
 
 	// TODO: Test the case, that the http request was closed since we got the
@@ -120,26 +124,8 @@ func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*w
 		// Finish the websocket handshake by upgrading the http request.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
-			return nil, nil, fmt.Errorf("could not upgrade the http request: %s", err)
+			return nil, fmt.Errorf("could not upgrade the http request: %s", err)
 		}
-
-		// Set a close handler, that informs the channel layer, when the connection
-		// is closed.
-		conn.SetCloseHandler(func(code int, text string) error {
-			order++
-
-			// Send the message to the channel layer. Ignore any error that happens.
-			channelLayer.Send("websocket.disconnect", &asgi.DisconnectionMessage{
-				ReplyChannel: channel,
-				Code:         code,
-				Path:         req.URL.Path,
-				Order:        order,
-			})
-
-			// Call the original handler
-			conn.SetCloseHandler(nil)
-			return conn.CloseHandler()(code, text)
-		})
 
 		// Send the first data, if there is one.
 		if am.Text != "" {
@@ -151,20 +137,23 @@ func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*w
 		// The connection should be closed again.
 		if am.Close != 0 {
 			// The connection was opened but should be closed again
-			if conn.CloseHandler()(am.Close, ""); err != nil {
-				return nil, nil, fmt.Errorf("Could not close the websocket connection: %s", err)
+			if err = conn.CloseHandler()(am.Close, ""); err != nil {
+				return nil, fmt.Errorf("Could not close the websocket connection: %s", err)
 			}
+			// An close message was send to the client but we return the connection
+			// anyway, because the connection as to be closed after receiving the
+			// close message from the client.
 		}
-		return conn, &order, nil
+		return conn, nil
 	}
 
-	// If we are here, then the websocket connection should not be opend
+	// If we are here, then the websocket connection should not be opened
 	if am.Close == 0 {
 		// At this point, close has to be set.
-		return nil, nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
+		return nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
 	}
 	w.WriteHeader(403)
-	return nil, nil, nil
+	return nil, nil
 }
 
 // Handels an request that wants to be upgraded to a websocket connection.
@@ -182,7 +171,7 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) error {
 
 	// Try to receive the answer from the channel layer and open the websocket
 	// connection, if it tells us to do.
-	conn, order, err := receiveAccept(w, req, replyChannel)
+	conn, err := receiveAccept(w, req, replyChannel)
 	if err != nil {
 		return fmt.Errorf("could not establish websocket connection: %s", err)
 	}
@@ -192,8 +181,20 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) error {
 		return nil
 	}
 
-	// Close the websocket connection in the end.
-	defer conn.Close()
+	order := 0
+	closeCode := 1006 // Code that is sent to the channel layer. 1006 is used, when no close message was received
+
+	// In the end: Close the websocket connection and inform the channel layer about it.
+	defer func() {
+		order++
+		channelLayer.Send("websocket.disconnect", &asgi.DisconnectionMessage{
+			ReplyChannel: replyChannel,
+			Code:         closeCode,
+			Path:         req.URL.Path,
+			Order:        order,
+		})
+		conn.Close()
+	}()
 
 	// Create goroutines to read to the websocket connection and the channel
 	// layer at the same time.
@@ -210,13 +211,22 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) error {
 				// The channel was closed. An error happend. So close the connection
 				return nil
 			}
-			*order++
+
+			if r.Err != nil {
+				// An error happend while reading from the websocket connection. The
+				// usual case is, that the client send a close message (which is handelt
+				// as an error). So set the closeCode and return (and thereby call defer)
+				closeCode = r.Err.Code
+				return nil
+			}
+
+			order++
 			message := asgi.ReceiveMessage{
 				ReplyChannel: replyChannel,
 				Path:         req.URL.Path,
 				Content:      r.Content,
 				Type:         r.Type,
-				Order:        *order,
+				Order:        order,
 			}
 
 			// Forward it to the channel layer
