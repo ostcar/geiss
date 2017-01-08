@@ -1,6 +1,7 @@
 package asgi
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -19,4 +20,22 @@ func GetChannelnameRandom() string {
 		b[i] = channelLetters[rand.Int63()%int64(len(channelLetters))]
 	}
 	return string(b[:])
+}
+
+// ForwardError is an error that holds another error inside
+type ForwardError struct {
+	err  error
+	text string
+}
+
+// NewForwardError creates a new ForwardError.
+func NewForwardError(s string, e error) *ForwardError {
+	return &ForwardError{
+		err:  e,
+		text: s,
+	}
+}
+
+func (e *ForwardError) Error() string {
+	return fmt.Sprintf("%s: %s", e.text, e.err)
 }

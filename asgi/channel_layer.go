@@ -44,7 +44,14 @@ func (e ChannelFullError) Error() string {
 }
 
 // IsChannelFullError returns true, if the error is an ChannelFullError
+// If the error is a ForwardError, then return true, if one of the inner errors
+// is a ChannelFullError
 func IsChannelFullError(err error) bool {
-	_, ok := err.(ChannelFullError)
-	return ok
+	switch t := err.(type) {
+	case ChannelFullError:
+		return true
+	case *ForwardError:
+		return IsChannelFullError(t)
+	}
+	return false
 }

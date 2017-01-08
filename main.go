@@ -44,7 +44,6 @@ func httpLogger(handler http.Handler) http.Handler {
 }
 
 func main() {
-
 	listen := ":8000"
 	http.HandleFunc("/", asgiHandler)
 	log.Printf("Start webserver to listen on %s", listen)
