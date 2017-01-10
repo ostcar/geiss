@@ -16,7 +16,7 @@ import (
 var channelLayer asgi.ChannelLayer
 
 func init() {
-	channelLayer = redis.NewChannelLayer()
+	channelLayer = redis.NewChannelLayer(60, nil, "asgi:", 100)
 }
 
 // ASGIHandler handels all incomming requests

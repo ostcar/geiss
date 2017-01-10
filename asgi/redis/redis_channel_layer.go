@@ -45,8 +45,21 @@ type ChannelLayer struct {
 }
 
 // NewChannelLayer creates a new RedisChannelLayer
-func NewChannelLayer() *ChannelLayer {
-	return &ChannelLayer{prefix: "asgi:", expiry: 60, host: ":6379", capacity: 1000}
+func NewChannelLayer(expiry int, hosts []string, prefix string, capacity int) *ChannelLayer {
+	if expiry == 0 {
+		expiry = 60
+	}
+	if hosts == nil {
+		hosts = []string{":6379"}
+	}
+	if prefix == "" {
+		prefix = "asgi:"
+	}
+	if capacity == 0 {
+		capacity = 100
+	}
+	// TODO: Work with more then one host
+	return &ChannelLayer{prefix: prefix, expiry: expiry, host: hosts[0], capacity: capacity}
 }
 
 // NewChannel creates a new channelname
