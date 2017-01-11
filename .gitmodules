@@ -10,3 +10,6 @@
 [submodule "vendor/gopkg.in/vmihailenco/msgpack.v2"]
 	path = vendor/gopkg.in/vmihailenco/msgpack.v2
 	url = https://gopkg.in/vmihailenco/msgpack.v2
+[submodule "vendor/github.com/urfave/cli"]
+	path = vendor/github.com/urfave/cli
+	url = https://github.com/urfave/cli
