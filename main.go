@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gorilla/websocket"
 	"github.com/urfave/cli"
 
 	"github.com/ostcar/goasgiserver/asgi"
@@ -19,32 +18,7 @@ import (
 var channelLayer asgi.ChannelLayer
 
 func init() {
-	channelLayer = redis.NewChannelLayer(60, nil, "asgi:", 100)
-}
 
-// ASGIHandler handels all incomming requests
-func asgiHandler(w http.ResponseWriter, req *http.Request) {
-	var err error
-	if websocket.IsWebSocketUpgrade(req) {
-		if err = asgiWebsocketHandler(w, req); err != nil {
-			log.Panic(err.Error())
-		}
-		return
-	}
-
-	err = asgiHTTPHandler(w, req)
-	if err != nil {
-		log.Printf("Error: %s\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// Writes an output to the log for each incomming request.
-func httpLogger(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
-		handler.ServeHTTP(w, r)
-	})
 }
 
 func main() {
@@ -57,14 +31,39 @@ func main() {
 			Value: "localhost",
 			Usage: "host to listen on",
 		},
-		cli.Int64Flag{
+		cli.IntFlag{
 			Name:  "port, p",
 			Value: 8000,
 			Usage: "port to listen on",
 		},
+		cli.StringFlag{
+			Name:  "redis, r",
+			Value: ":6379",
+			Usage: "host and port of the redis server in the form HOST:Port",
+		},
+		cli.StringFlag{
+			Name:  "redis-prefix",
+			Value: "asgi:",
+			Usage: "prefix of the redis keys",
+		},
+		cli.IntFlag{
+			Name:  "redis-capacity",
+			Value: 100,
+			Usage: "channel capacity",
+		},
+		cli.IntFlag{
+			Name:  "redis-expiry",
+			Value: 60,
+			Usage: "seconds until a message to the redis channel layer will expire",
+		},
 	}
 	app.Action = func(c *cli.Context) error {
 		listen := fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port"))
+		channelLayer = redis.NewChannelLayer(
+			c.Int("redis-expiry"),
+			c.String("redis"),
+			c.String("redis-prefix"),
+			100)
 		http.HandleFunc("/", asgiHandler)
 		log.Printf("Start webserver to listen on %s", listen)
 		log.Fatal(http.ListenAndServe(listen, httpLogger(http.DefaultServeMux)))
