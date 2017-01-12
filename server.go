@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -30,4 +31,17 @@ func httpLogger(handler http.Handler) http.Handler {
 		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func startHTTPServer(listen string, statics []string) {
+	for _, static := range statics {
+		paths := strings.SplitN(static, ":", 2)
+		if len(paths) != 2 {
+			log.Fatalf("Invalid argument for --static \"%s\"", static)
+		}
+		http.Handle(paths[0], http.StripPrefix(paths[0], http.FileServer(http.Dir(paths[1]))))
+	}
+	http.HandleFunc("/", asgiHandler)
+	log.Printf("Start webserver to listen on %s", listen)
+	log.Fatal(http.ListenAndServe(listen, httpLogger(http.DefaultServeMux)))
 }

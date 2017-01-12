@@ -5,8 +5,6 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 
 	"github.com/urfave/cli"
@@ -25,6 +23,8 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "goasgiserver"
 	app.Usage = "an asgi protocol server"
+	app.HideHelp = true
+	app.ArgsUsage = " " // If it is an empty string, then it shows a stupid default text
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "host, H",
@@ -35,6 +35,11 @@ func main() {
 			Name:  "port, p",
 			Value: 8000,
 			Usage: "port to listen on",
+		},
+		cli.StringSliceFlag{
+			Name:  "static, s",
+			Value: nil,
+			Usage: "url path prefix and file path to serve static file in the form /static/:/path/to/static/files",
 		},
 		cli.StringFlag{
 			Name:  "redis, r",
@@ -58,15 +63,14 @@ func main() {
 		},
 	}
 	app.Action = func(c *cli.Context) error {
-		listen := fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port"))
 		channelLayer = redis.NewChannelLayer(
 			c.Int("redis-expiry"),
 			c.String("redis"),
 			c.String("redis-prefix"),
 			100)
-		http.HandleFunc("/", asgiHandler)
-		log.Printf("Start webserver to listen on %s", listen)
-		log.Fatal(http.ListenAndServe(listen, httpLogger(http.DefaultServeMux)))
+		startHTTPServer(
+			fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port")),
+			c.StringSlice("static"))
 		return nil
 	}
 	app.Run(os.Args)
