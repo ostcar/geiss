@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ostcar/goasgiserver/asgi"
+	"github.com/ostcar/geiss/asgi"
 )
 
 const httpResponseWait = 10

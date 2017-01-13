@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ostcar/goasgiserver/asgi"
+	"github.com/ostcar/geiss/asgi"
 
 	"github.com/gorilla/websocket"
 )

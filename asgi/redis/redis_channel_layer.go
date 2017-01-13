@@ -6,7 +6,7 @@ package redis
 import (
 	"fmt"
 
-	"github.com/ostcar/goasgiserver/asgi"
+	"github.com/ostcar/geiss/asgi"
 
 	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 

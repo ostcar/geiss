@@ -9,8 +9,8 @@ import (
 
 	"github.com/urfave/cli"
 
-	"github.com/ostcar/goasgiserver/asgi"
-	"github.com/ostcar/goasgiserver/asgi/redis"
+	"github.com/ostcar/geiss/asgi"
+	"github.com/ostcar/geiss/asgi/redis"
 )
 
 var channelLayer asgi.ChannelLayer
@@ -21,7 +21,7 @@ func init() {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "goasgiserver"
+	app.Name = "geiss"
 	app.Usage = "an asgi protocol server"
 	app.HideHelp = true
 	app.ArgsUsage = " " // If it is an empty string, then it shows a stupid default text

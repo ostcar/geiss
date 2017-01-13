@@ -1,7 +1,7 @@
-goasgiserver
+geiss
 ============
 
-goasgiserver is a protocol server defined by the asgi specs and therefore
+geiss is a protocol server defined by the asgi specs and therefore
 an alternative to daphne.
 
 See https://channels.readthedocs.io/en/latest/asgi.html for more informations.
@@ -14,7 +14,7 @@ First you have to set your gopath. See https://github.com/golang/go/wiki/GOPATH
 
 Then download and compile the server by calling::
 
-  $ go get github.com/ostcar/goasgiserver
+  $ go get github.com/ostcar/geiss
 
 
 Configuration and start
@@ -26,12 +26,12 @@ port 6379. It opens the webserver on port 8000.
 
 The server can be started be running::
 
-    $ $GOPATH/bin/goasgiserver
+    $ $GOPATH/bin/geiss
 
 or::
 
     $ export PATH=$PATH:$GOPATH/bin
-    $ goasgiserver
+    $ geiss
 
 
 Full channels example
@@ -50,6 +50,6 @@ You can test it with::
     $ pip install -r requirements.txt
     $ python manage.py migrate
     $ python manage.py runworker &
-    $ goasgiserver
+    $ geiss
 
 Then start a webserver and connect to localhost:8000
