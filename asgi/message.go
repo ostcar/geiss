@@ -3,8 +3,6 @@ package asgi
 import (
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -33,23 +31,6 @@ type ReceiveMessenger interface {
 type Messager interface {
 	SendMessenger
 	ReceiveMessenger
-}
-
-// strToHost converts a string in the form "host:port" to an two element array
-// where the first element is the host as string and the second argument is
-// the port as integer.
-func strToHost(host string) (hp [2]interface{}, err error) {
-	s := strings.Split(host, ":")
-	if len(s) != 2 {
-		err = fmt.Errorf("host has wrong format: %s", host)
-		return
-	}
-	hp[0] = s[0]
-	hp[1], err = strconv.Atoi(s[1])
-	if err != nil {
-		err = fmt.Errorf("can not convert %s to int", s[1])
-	}
-	return
 }
 
 // RequestMessage is a structured message type, defined by the asgi specs which
@@ -84,14 +65,7 @@ func (r *RequestMessage) Raw() Message {
 	m["path"] = r.Path
 	m["query_string"] = r.QueryString
 	m["root_path"] = r.RootPath
-
-	var headers [][2][]byte
-	for headerKey, headerValues := range r.Headers {
-		for _, headerValue := range headerValues {
-			headers = append(headers, [2][]byte{[]byte(strings.ToLower(headerKey)), []byte(headerValue)})
-		}
-	}
-	m["headers"] = headers
+	m["headers"] = convertHeader(r.Headers)
 	m["body"] = r.Body
 	m["body_channel"] = r.BodyChannel
 	m["client"], _ = strToHost(r.Client)
@@ -219,14 +193,7 @@ func (cm *ConnectionMessage) Raw() Message {
 	m["path"] = cm.Path
 	m["query_string"] = cm.QueryString
 	m["root_path"] = cm.RootPath
-
-	var headers [][2][]byte
-	for headerKey, headerValues := range cm.Headers {
-		for _, headerValue := range headerValues {
-			headers = append(headers, [2][]byte{[]byte(strings.ToLower(headerKey)), []byte(headerValue)})
-		}
-	}
-	m["headers"] = headers
+	m["headers"] = convertHeader(cm.Headers)
 	m["client"], _ = strToHost(cm.Client)
 	m["server"], _ = strToHost(cm.Server)
 	m["order"] = 0
