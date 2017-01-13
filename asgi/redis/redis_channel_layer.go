@@ -5,6 +5,7 @@ package redis
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ostcar/geiss/asgi"
 
@@ -114,19 +115,20 @@ func (r *ChannelLayer) Send(channel string, message asgi.SendMessenger) (err err
 	return nil
 }
 
-func lpopMany(channels []string, conn redis.Conn) (channel, message string, err error) {
+func lpopMany(prefix string, channels []string, conn redis.Conn) (channel, message string, err error) {
 	// TODO: use lua
 	for _, channel = range channels {
-		message, err = redis.String(conn.Do("LPOP", channel))
+		message, err = redis.String(conn.Do("LPOP", prefix+channel))
 		if err == redis.ErrNil {
 			// The channel is empty
 			continue
 		} else {
 			// An error happend or a value was returned
-			break
+			return channel, message, err
 		}
 	}
-	return
+	// Did not receive anything
+	return "", "", redis.ErrNil
 }
 
 // Receive fills a message from one or more channels
@@ -156,10 +158,10 @@ func (r *ChannelLayer) Receive(channels []string, block bool, message asgi.Recei
 		} else if err != nil {
 			return "", err
 		}
-		channel = v[0]
+		channel = strings.TrimPrefix(v[0], r.prefix)
 		messageKey = v[1]
 	} else {
-		channel, messageKey, err = lpopMany(channels, conn)
+		channel, messageKey, err = lpopMany(r.prefix, channels, conn)
 		if err == redis.ErrNil {
 			// Nothing to receive
 			return "", nil
