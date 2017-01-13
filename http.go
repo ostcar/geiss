@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -9,7 +10,7 @@ import (
 	"github.com/ostcar/geiss/asgi"
 )
 
-const httpResponseWait = 10
+const httpResponseWait = 30
 
 // Create the reply channel name for a http.response channel.
 func createResponseReplyChannel() (replyChannel string, err error) {
@@ -23,9 +24,31 @@ func createResponseReplyChannel() (replyChannel string, err error) {
 // Forwars an http request to the channel layer. Returns the reply channel name.
 func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 	// Read the body of the request
-	body, err := ioutil.ReadAll(req.Body)
+	// TODO: The asgi specs say, that a message should not be bigger then 1MB.
+	//       So if the body is very big, it should be split into one RequestMessage
+	//       and some RequestBodyChunkMessages.
+	var bodyChunkSize int64 = 500 * 1024 // Split body at 500 kb
+
+	// Read the firt part of the body
+	body, err := ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
 	if err != nil {
 		return asgi.NewForwardError("can not read the body of the request", err)
+	}
+
+	// Read more content from the body
+	moreBody, err := ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
+	if err != nil {
+		return asgi.NewForwardError("can not read the body of the request", err)
+	}
+
+	// If there is a second part of the body, then create a channel to read from
+	// it.
+	bodyChannel := ""
+	if len(moreBody) > 0 {
+		bodyChannel, err = channelLayer.NewChannel("http.request.body?")
+		if err != nil {
+			return asgi.NewForwardError("can not create new channel name", err)
+		}
 	}
 
 	// Send the Request message to the channel layer
@@ -38,11 +61,39 @@ func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 		QueryString:  []byte(req.URL.RawQuery),
 		Headers:      req.Header,
 		Body:         body,
+		BodyChannel:  bodyChannel,
 		Client:       req.Host, //TODO use the right value
 		Server:       req.Host,
 	})
 	if err != nil {
-		return asgi.NewForwardError("can not send message the message to the channel layer", err)
+		return asgi.NewForwardError("can not send the message to the channel layer", err)
+	}
+
+	for len(moreBody) > 0 {
+		body = moreBody
+
+		// Read more content from the body
+		moreBody, err = ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
+		if err != nil {
+			return asgi.NewForwardError("can not read the body of the request", err)
+		}
+
+		for i := 0; i < 1000; i++ {
+			err = channelLayer.Send(bodyChannel, &asgi.RequestBodyChunkMessage{
+				Content:     body,
+				Closed:      false, // TODO test if the connection is closed
+				MoreContent: bool(len(moreBody) > 0),
+			})
+			if err != nil {
+				if asgi.IsChannelFullError(err) {
+					// If the channel is full, then try again. At least for some time.
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+				return asgi.NewForwardError("can not send the message to the channel layer", err)
+			}
+			break
+		}
 	}
 	return nil
 }

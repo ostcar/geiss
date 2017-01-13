@@ -99,7 +99,24 @@ func (r *RequestMessage) Raw() Message {
 	return m
 }
 
-// TODO: Implement the "Request Body Chunk" message
+// RequestBodyChunkMessage is a structured message type, defined by the asgi
+// specs which is used to continue forwarding an http request from a client to
+// the channel layer, if the request body was big.
+// This differs from the specs that all fields are uppercase and CamelCase.
+type RequestBodyChunkMessage struct {
+	Content     []byte
+	Closed      bool
+	MoreContent bool
+}
+
+// Raw converts a RequestBodyChunkMessage to a Message dict.
+func (r *RequestBodyChunkMessage) Raw() Message {
+	m := make(Message)
+	m["content"] = r.Content
+	m["closed"] = r.Closed
+	m["more_content"] = r.MoreContent
+	return m
+}
 
 // ResponseChunkMessage is a structured message type, defined by the asgi specs.
 // It is used to forward an response from the channel layer to the client.

@@ -105,7 +105,9 @@ func (r *ChannelLayer) Send(channel string, message asgi.SendMessenger) (err err
 	_, err = luaChanSend.Do(conn, messageKey, channelKey, bytes, r.expiry, r.capacity)
 	if err != nil {
 		if err.Error() == "full" {
-			return asgi.ChannelFullError{}
+			return asgi.ChannelFullError{
+				Channel: channel,
+			}
 		}
 		return fmt.Errorf("redis luaChanSend error: %s", err)
 	}
