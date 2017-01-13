@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -20,9 +21,18 @@ func asgiHandler(w http.ResponseWriter, req *http.Request) {
 
 	err = asgiHTTPHandler(w, req)
 	if err != nil {
-		log.Printf("Error: %s\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func handleError(w http.ResponseWriter, m string, status int) {
+	log.Printf("Error: %s\n", m)
+	if !debug {
+		m = "Internal error."
+	} else {
+		m = fmt.Sprintf("%d: Error: %s.", status, m)
+	}
+	http.Error(w, m, status)
 }
 
 // Writes an output to the log for each incomming request.

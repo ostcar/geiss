@@ -14,10 +14,7 @@ import (
 )
 
 var channelLayer asgi.ChannelLayer
-
-func init() {
-
-}
+var debug bool
 
 func main() {
 	app := cli.NewApp()
@@ -35,6 +32,11 @@ func main() {
 			Name:  "port, p",
 			Value: 8000,
 			Usage: "port to listen on",
+		},
+		cli.BoolFlag{
+			Name:        "debug, d",
+			Usage:       "if set, sends error messages to the client",
+			Destination: &debug,
 		},
 		cli.StringSliceFlag{
 			Name:  "static, s",

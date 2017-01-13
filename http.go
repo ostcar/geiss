@@ -133,7 +133,8 @@ func asgiHTTPHandler(w http.ResponseWriter, req *http.Request) error {
 	// Forward the request to the channel layer and get the reply channel name.
 	if err = forwardHTTPRequest(req, channel); err != nil {
 		if asgi.IsChannelFullError(err) {
-			http.Error(w, err.Error(), 503)
+			handleError(w, err.Error(), 503)
+			return nil
 		}
 		return asgi.NewForwardError("could not send message to the channel layer", err)
 	}
