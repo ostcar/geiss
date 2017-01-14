@@ -69,7 +69,7 @@ func main() {
 			c.Int("redis-expiry"),
 			c.String("redis"),
 			c.String("redis-prefix"),
-			100)
+			c.Int("redis-capacity"))
 		startHTTPServer(
 			fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port")),
 			c.StringSlice("static"))

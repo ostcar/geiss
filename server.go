@@ -14,7 +14,7 @@ func asgiHandler(w http.ResponseWriter, req *http.Request) {
 	var err error
 	if websocket.IsWebSocketUpgrade(req) {
 		if err = asgiWebsocketHandler(w, req); err != nil {
-			log.Panic(err.Error())
+			log.Printf("%s\n", err)
 		}
 		return
 	}

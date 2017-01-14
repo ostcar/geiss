@@ -35,8 +35,8 @@ func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
 		// channel.
 		t, m, err := conn.ReadMessage()
 		if err != nil {
-			if err, ok := err.(*websocket.CloseError); ok {
-				read <- websocketMessage{Err: err}
+			if closeErr, ok := err.(*websocket.CloseError); ok {
+				read <- websocketMessage{Err: closeErr}
 			} else {
 				log.Printf("Could not receive the websocket message: %s", err)
 			}
@@ -219,6 +219,9 @@ func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*w
 		}
 		if err != nil {
 			conn.Close()
+			if _, ok := err.(*websocket.CloseError); !ok {
+				return nil, fmt.Errorf("Client closed the connection before first message could be send.\n")
+			}
 			return nil, asgi.NewForwardError("could not send first message to the websocket connection", err)
 		}
 
