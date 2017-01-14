@@ -5,6 +5,7 @@ package redis
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/ostcar/geiss/asgi"
@@ -60,13 +61,17 @@ func NewChannelLayer(expiry int, host string, prefix string, capacity int) *Chan
 	if capacity == 0 {
 		capacity = 100
 	}
+	if redisPool != nil {
+		log.Fatalln("Redis pool already set. Can not create a second one.")
+	}
+	CreateRedisPool(host)
 	return &ChannelLayer{prefix: prefix, expiry: expiry, host: host, capacity: capacity}
 }
 
 // NewChannel creates a new channelname
 func (r *ChannelLayer) NewChannel(channelPrefix string) (channel string, err error) {
 	var exists int64
-	conn := RedisPool.Get()
+	conn := redisPool.Get()
 	defer conn.Close()
 
 	for {
@@ -90,7 +95,7 @@ func (r *ChannelLayer) NewChannel(channelPrefix string) (channel string, err err
 
 // Send sends a message to a specific channel
 func (r *ChannelLayer) Send(channel string, message asgi.SendMessenger) (err error) {
-	conn := RedisPool.Get()
+	conn := redisPool.Get()
 	defer conn.Close()
 
 	messageKey := r.prefix + uuid.NewV4().String()
@@ -133,7 +138,7 @@ func lpopMany(prefix string, channels []string, conn redis.Conn) (channel, messa
 
 // Receive fills a message from one or more channels
 func (r *ChannelLayer) Receive(channels []string, block bool, message asgi.ReceiveMessenger) (channel string, err error) {
-	conn := RedisPool.Get()
+	conn := redisPool.Get()
 	defer conn.Close()
 
 	var messageKey string

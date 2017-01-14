@@ -14,7 +14,7 @@ func asgiHandler(w http.ResponseWriter, req *http.Request) {
 	var err error
 	if websocket.IsWebSocketUpgrade(req) {
 		if err = asgiWebsocketHandler(w, req); err != nil {
-			log.Printf("%s\n", err)
+			log.Printf("%s", err)
 		}
 		return
 	}
@@ -26,7 +26,7 @@ func asgiHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func handleError(w http.ResponseWriter, m string, status int) {
-	log.Printf("Error: %s\n", m)
+	log.Printf("Error: %s", m)
 	if !debug {
 		m = "Internal error."
 	} else {

@@ -6,17 +6,14 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-// RedisPool is a poll of redis connections
-var RedisPool *redis.Pool
+// RedisPool is a pool of redis connections
+var redisPool *redis.Pool
 
-func init() {
-	RedisPool = newRedisPool(":6379")
-}
-
-func newRedisPool(addr string) *redis.Pool {
-	return &redis.Pool{
+// CreateRedisPool sets the redis pool to connect to the host.
+func CreateRedisPool(host string) {
+	redisPool = &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
+		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", host) },
 	}
 }
