@@ -2,6 +2,7 @@ package asgi
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -57,6 +58,7 @@ type RequestMessage struct {
 
 // Raw converts a RequestMessage to a Message dict.
 func (r *RequestMessage) Raw() Message {
+	var err error
 	m := make(Message)
 	m["reply_channel"] = r.ReplyChannel
 	m["http_version"] = r.HTTPVersion
@@ -68,8 +70,14 @@ func (r *RequestMessage) Raw() Message {
 	m["headers"] = convertHeader(r.Headers)
 	m["body"] = r.Body
 	m["body_channel"] = r.BodyChannel
-	m["client"], _ = strToHost(r.Client)
-	m["server"], _ = strToHost(r.Server)
+	m["client"], err = strToHost(r.Client)
+	if err != nil {
+		log.Panicf("Could not create the client value for a request message: %s", err)
+	}
+	m["server"], err = strToHost(r.Server)
+	if err != nil {
+		log.Panicf("Could not create the server value for a request message: %s", err)
+	}
 	return m
 }
 
@@ -187,6 +195,7 @@ type ConnectionMessage struct {
 // Raw converts a ConnectionMessage to a Message dict, that can be send through
 // the channel layer
 func (cm *ConnectionMessage) Raw() Message {
+	var err error
 	m := make(Message)
 	m["reply_channel"] = cm.ReplyChannel
 	m["scheme"] = cm.Scheme
@@ -194,8 +203,14 @@ func (cm *ConnectionMessage) Raw() Message {
 	m["query_string"] = cm.QueryString
 	m["root_path"] = cm.RootPath
 	m["headers"] = convertHeader(cm.Headers)
-	m["client"], _ = strToHost(cm.Client)
-	m["server"], _ = strToHost(cm.Server)
+	m["client"], err = strToHost(cm.Client)
+	if err != nil {
+		log.Panicf("Could not create the client value for a connection message: %s", err)
+	}
+	m["server"], err = strToHost(cm.Server)
+	if err != nil {
+		log.Panicf("Could not create the server value for a connection message: %s", err)
+	}
 	m["order"] = 0
 	return m
 }
