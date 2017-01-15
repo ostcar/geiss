@@ -13,3 +13,6 @@
 [submodule "vendor/github.com/urfave/cli"]
 	path = vendor/github.com/urfave/cli
 	url = https://github.com/urfave/cli
+[submodule "vendor/golang.org/x/sys"]
+	path = vendor/golang.org/x/sys
+	url = https://go.googlesource.com/sys
