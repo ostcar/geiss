@@ -70,6 +70,7 @@ func main() {
 			c.String("redis"),
 			c.String("redis-prefix"),
 			c.Int("redis-capacity"))
+
 		startHTTPServer(
 			fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port")),
 			c.StringSlice("static"))

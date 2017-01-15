@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/ostcar/geiss/asgi"
 
@@ -192,16 +193,25 @@ func forwardWebsocketConnection(req *http.Request, channel string) (err error) {
 func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, error) {
 	// Get a message from the channel layer.
 	var am asgi.SendCloseAcceptMessage
-	c, err := channelLayer.Receive([]string{channel}, true, &am)
-	if err != nil {
-		return nil, asgi.NewForwardError("could not read accept message from the channel layer", err)
-	}
-	if c == "" {
-		// Did not get any message from the channel layer.
-		// The specs say, that the handshake should not be finished. But then we are
-		// not compatible to reconnecting-websocket that is used by the channels-examples.
-		// So for now, we open the websocket connection.
-		am.Accept = true
+
+	// Read from the channel. Try to get a response for httpResponseWait seconds.
+	// If there is no response in this time, then break.
+	timeout := time.After(httpResponseWait * time.Second)
+receiveLoop:
+	for {
+		select {
+		case <-timeout:
+			return nil, fmt.Errorf("did not get a response in time")
+		default:
+			c, err := channelLayer.Receive([]string{channel}, true, &am)
+			if err != nil {
+				return nil, asgi.NewForwardError("could not read accept message from the channel layer", err)
+			}
+			if c != "" {
+				// Got a response
+				break receiveLoop
+			}
+		}
 	}
 
 	if am.Text != "" || am.Bytes != nil || am.Accept {

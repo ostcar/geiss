@@ -23,11 +23,8 @@ func createResponseReplyChannel() (replyChannel string, err error) {
 }
 
 // Forwars an http request to the channel layer. Returns the reply channel name.
-func forwardHTTPRequest(req *http.Request, channel string) (err error) {
+func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 	// Read the body of the request
-	// TODO: The asgi specs say, that a message should not be bigger then 1MB.
-	//       So if the body is very big, it should be split into one RequestMessage
-	//       and some RequestBodyChunkMessages.
 	var bodyChunkSize int64 = 500 * 1024 // Split body at 500 kb
 
 	// Read the firt part of the body
@@ -53,7 +50,7 @@ func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 	}
 
 	host := req.Host
-	if req.TLS != nil && strings.Contains(req.Host, ":") {
+	if req.TLS != nil && !strings.Contains(req.Host, ":") {
 		// To no port was set in the host explicitly, the asgi implementation uses
 		// 80 as default. So if the request is a https request, we have to manualy
 		// set it to 443
@@ -62,7 +59,7 @@ func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 
 	// Send the Request message to the channel layer
 	err = channelLayer.Send("http.request", &asgi.RequestMessage{
-		ReplyChannel: channel,
+		ReplyChannel: replyChannel,
 		HTTPVersion:  req.Proto,
 		Method:       req.Method,
 		Path:         req.URL.Path,
