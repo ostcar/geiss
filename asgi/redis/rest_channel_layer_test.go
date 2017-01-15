@@ -9,6 +9,7 @@ import (
 )
 
 func TestNewChannel(t *testing.T) {
+	redisPool = nil
 	c := NewChannelLayer(0, "", "test:", 0)
 
 	channel, err := c.NewChannel("myprefix!")
@@ -41,6 +42,7 @@ func (t *testMessage) Set(m asgi.Message) error {
 
 func TestSendAndReceive(t *testing.T) {
 	innerTest := func(block bool) {
+		redisPool = nil
 		c := NewChannelLayer(0, "", "testsendandreceive:", 0)
 		sendMessage := testMessage{
 			s: "MyMessage",
@@ -67,6 +69,7 @@ func TestSendAndReceive(t *testing.T) {
 }
 
 func TestSendChannelFull(t *testing.T) {
+	redisPool = nil
 	c := NewChannelLayer(0, "", "testsendchannelfull:", 1)
 	sendMessage := testMessage{
 		s: "MyMessage",
