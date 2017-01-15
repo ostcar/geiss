@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ostcar/geiss/asgi"
@@ -51,6 +52,14 @@ func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 		}
 	}
 
+	host := req.Host
+	if req.TLS != nil && strings.Contains(req.Host, ":") {
+		// To no port was set in the host explicitly, the asgi implementation uses
+		// 80 as default. So if the request is a https request, we have to manualy
+		// set it to 443
+		host = req.Host + ":443"
+	}
+
 	// Send the Request message to the channel layer
 	err = channelLayer.Send("http.request", &asgi.RequestMessage{
 		ReplyChannel: channel,
@@ -62,8 +71,8 @@ func forwardHTTPRequest(req *http.Request, channel string) (err error) {
 		Headers:      req.Header,
 		Body:         body,
 		BodyChannel:  bodyChannel,
-		Client:       req.Host, //TODO use the right value
-		Server:       req.Host,
+		Client:       req.RemoteAddr,
+		Server:       host,
 	})
 	if err != nil {
 		return asgi.NewForwardError("can not send the message to the channel layer", err)

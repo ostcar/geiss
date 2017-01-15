@@ -47,15 +47,25 @@ func (e *ForwardError) Error() string {
 // where the first element is the host as string and the second argument is
 // the port as integer.
 func strToHost(host string) (hp [2]interface{}, err error) {
+	if host == "" {
+		err = fmt.Errorf("host can not be empty")
+	}
 	s := strings.Split(host, ":")
-	if len(s) != 2 {
+	switch len(s) {
+	case 1:
+		// Host was given in the form host (without a port)
+		hp[0] = s[0]
+		hp[1] = 80
+	case 2:
+		hp[0] = s[0]
+		hp[1], err = strconv.Atoi(s[1])
+		if err != nil {
+			err = fmt.Errorf("can not convert %s to int", s[1])
+			return
+		}
+	default:
 		err = fmt.Errorf("host has wrong format: %s", host)
 		return
-	}
-	hp[0] = s[0]
-	hp[1], err = strconv.Atoi(s[1])
-	if err != nil {
-		err = fmt.Errorf("can not convert %s to int", s[1])
 	}
 	return
 }

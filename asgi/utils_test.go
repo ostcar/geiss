@@ -32,10 +32,18 @@ func TestStrToHost(t *testing.T) {
 		t.Errorf("Expected the two values localhost and 12345, got %s", hp)
 	}
 
-	for _, wrongStr := range []string{"local123", "local:123:45", "local:one"} {
-		_, err = strToHost(wrongStr)
+	hp, err = strToHost("localhost")
+	if err != nil {
+		t.Errorf("Did not expect any error, got `%s`", err)
+	}
+	if hp != [2]interface{}{"localhost", 80} {
+		t.Errorf("Expected the two values localhost and 12345, got %s", hp)
+	}
+
+	for _, wrongStr := range []string{"", "local:123:45", "local:one"} {
+		hp, err = strToHost(wrongStr)
 		if err == nil {
-			t.Errorf("Expected an error. Got non")
+			t.Errorf("Expected an error. Did not get one, return value was: %v", hp)
 		}
 	}
 }
