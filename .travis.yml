@@ -1,0 +1,16 @@
+language: go
+
+services:
+  - redis-server
+
+install:
+- go get -u github.com/alecthomas/gometalinter
+- go get -u golang.org/x/tools/cmd/goimports
+- go get -u github.com/jgautheron/goconst/cmd/goconst
+- go get -u github.com/gordonklaus/ineffassign
+- go get -u github.com/golang/lint/golint
+
+script:
+- goimports -d $(find . -type f -name '*.go' -not -path "./vendor/*") | tee | read && echo "Please run goimports to fix the code style" 1>&2 && false || true
+- gometalinter --vendor --disable-all --enable=vet --enable=vetshadow --enable=golint --enable=ineffassign --enable=goconst --tests ./...
+- go test $(go list ./... | grep -v /vendor/)
