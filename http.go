@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -24,25 +23,20 @@ func createResponseReplyChannel() (replyChannel string, err error) {
 
 // Forwars an http request to the channel layer. Returns the reply channel name.
 func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
-	// Read the body of the request
-	var bodyChunkSize int64 = 500 * 1024 // Split body at 500 kb
+	const readSize = 500 * 1024 // Read 500kb at once
+	var eob bool                // end of body
+	var bodyChannel string
+	bodyBuf := make([]byte, readSize)
 
 	// Read the firt part of the body
-	body, err := ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
-	if err != nil {
+	n, err := req.Body.Read(bodyBuf)
+	if err != nil && err != io.EOF {
 		return asgi.NewForwardError("can not read the body of the request", err)
 	}
+	eob = err == io.EOF
 
-	// Read more content from the body
-	moreBody, err := ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
-	if err != nil {
-		return asgi.NewForwardError("can not read the body of the request", err)
-	}
-
-	// If there is a second part of the body, then create a channel to read from
-	// it.
-	bodyChannel := ""
-	if len(moreBody) > 0 {
+	// If there is a second part of the body, then create a channel to read from it.
+	if !eob {
 		bodyChannel, err = channelLayer.NewChannel("http.request.body?")
 		if err != nil {
 			return asgi.NewForwardError("can not create new channel name", err)
@@ -51,7 +45,7 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 
 	host := req.Host
 	if req.TLS != nil && !strings.Contains(req.Host, ":") {
-		// To no port was set in the host explicitly, the asgi implementation uses
+		// If no port was set in the host explicitly, the asgi implementation uses
 		// 80 as default. So if the request is a https request, we have to manualy
 		// set it to 443
 		host = req.Host + ":443"
@@ -66,33 +60,34 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 		Scheme:       req.URL.Scheme,
 		QueryString:  []byte(req.URL.RawQuery),
 		Headers:      req.Header,
-		Body:         body,
+		Body:         bodyBuf[:n],
 		BodyChannel:  bodyChannel,
 		Client:       req.RemoteAddr,
 		Server:       host,
 	})
 	if err != nil {
+		// If err is an channel full error, we forward it. The asgi specs define, that
+		// we should not retry in this case, but return a 503.
 		return asgi.NewForwardError("can not send the message to the channel layer", err)
 	}
 
-	for len(moreBody) > 0 {
-		body = moreBody
-
+	for !eob {
 		// Read more content from the body
-		moreBody, err = ioutil.ReadAll(io.LimitReader(req.Body, bodyChunkSize))
-		if err != nil {
+		n, err := req.Body.Read(bodyBuf)
+		if err != nil && err != io.EOF {
 			return asgi.NewForwardError("can not read the body of the request", err)
 		}
+		eob = err == io.EOF
 
 		for i := 0; i < 1000; i++ {
 			err = channelLayer.Send(bodyChannel, &asgi.RequestBodyChunkMessage{
-				Content:     body,
+				Content:     bodyBuf[:n],
 				Closed:      false, // TODO test if the connection is closed
-				MoreContent: bool(len(moreBody) > 0),
+				MoreContent: !eob,
 			})
 			if err != nil {
 				if asgi.IsChannelFullError(err) {
-					// If the channel is full, then try again. At least for some time.
+					// If the channel is full, then try again.
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}

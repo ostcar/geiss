@@ -230,7 +230,7 @@ receiveLoop:
 		if err != nil {
 			conn.Close()
 			if _, ok := err.(*websocket.CloseError); !ok {
-				return nil, fmt.Errorf("client closed the connection before first message could be send")
+				return nil, fmt.Errorf("Client closed the connection before first message could be send")
 			}
 			return nil, asgi.NewForwardError("could not send first message to the websocket connection", err)
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,12 +34,14 @@ func TestCreateResponseReplyChannel(t *testing.T) {
 }
 
 func TestForwardHTTPRequest(t *testing.T) {
+	bigBody := bigReader(1024 * 1024)
 	requests := []*http.Request{
 		httptest.NewRequest("GET", "http://localhost/", nil),
 		httptest.NewRequest("GET", "http://localhost/", strings.NewReader("my body")),
 		httptest.NewRequest("GET", "http://localhost:8000/", nil),
 		httptest.NewRequest("GET", "https://localhost/", nil),
 		httptest.NewRequest("GET", "https://localhost:8430/", nil),
+		httptest.NewRequest("GET", "https://localhost", &bigBody),
 	}
 
 	for _, request := range requests {
@@ -81,4 +84,16 @@ type dummyReceiver struct {
 func (r *dummyReceiver) Set(m asgi.Message) error {
 	r.message = m
 	return nil
+}
+
+type bigReader int
+
+func (i *bigReader) Read(p []byte) (int, error) {
+	if int(*i) > len(p) {
+		*i -= bigReader(len(p))
+		return len(p), nil
+	}
+	v := int(*i)
+	*i = 0
+	return v, io.EOF
 }
