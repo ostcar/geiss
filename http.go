@@ -10,7 +10,29 @@ import (
 	"github.com/ostcar/geiss/asgi"
 )
 
-const httpResponseWait = 30
+const (
+	httpResponseWait = 30
+	bodyChunkSize    = 500 * 1024 // Read 500kb at once
+)
+
+// readBodyChunk reads bodyChunkSize bytes from an io.Reader, and returns it as
+// fist argument. eof is true, when there is no more content after this call.
+// If the body is exactly bodyChunkSize big, it can happen that eof is false but
+// there is no more content in the reader.
+func readBodyChunk(body io.Reader) (content []byte, eof bool, err error) {
+	content = make([]byte, bodyChunkSize)
+
+	n, err := body.Read(content)
+	if err != nil && err != io.EOF {
+		return nil, false, err
+	}
+
+	// If n is smaller then the len of content, then the body has to be empty
+	if n < bodyChunkSize || err == io.EOF {
+		eof = true
+	}
+	return content[:n], eof, nil
+}
 
 // Create the reply channel name for a http.response channel.
 func createResponseReplyChannel() (replyChannel string, err error) {
@@ -23,20 +45,16 @@ func createResponseReplyChannel() (replyChannel string, err error) {
 
 // Forwars an http request to the channel layer. Returns the reply channel name.
 func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
-	const readSize = 500 * 1024 // Read 500kb at once
-	var eob bool                // end of body
 	var bodyChannel string
-	bodyBuf := make([]byte, readSize)
 
 	// Read the firt part of the body
-	n, err := req.Body.Read(bodyBuf)
-	if err != nil && err != io.EOF {
+	content, eof, err := readBodyChunk(req.Body)
+	if err != nil {
 		return asgi.NewForwardError("can not read the body of the request", err)
 	}
-	eob = err == io.EOF
 
 	// If there is a second part of the body, then create a channel to read from it.
-	if !eob {
+	if !eof {
 		bodyChannel, err = channelLayer.NewChannel("http.request.body?")
 		if err != nil {
 			return asgi.NewForwardError("can not create new channel name", err)
@@ -60,7 +78,7 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 		Scheme:       req.URL.Scheme,
 		QueryString:  []byte(req.URL.RawQuery),
 		Headers:      req.Header,
-		Body:         bodyBuf[:n],
+		Body:         content,
 		BodyChannel:  bodyChannel,
 		Client:       req.RemoteAddr,
 		Server:       host,
@@ -70,33 +88,39 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 		// we should not retry in this case, but return a 503.
 		return asgi.NewForwardError("can not send the message to the channel layer", err)
 	}
-
-	for !eob {
-		// Read more content from the body
-		n, err := req.Body.Read(bodyBuf)
-		if err != nil && err != io.EOF {
-			return asgi.NewForwardError("can not read the body of the request", err)
-		}
-		eob = err == io.EOF
-
-		for i := 0; i < 1000; i++ {
-			err = channelLayer.Send(bodyChannel, &asgi.RequestBodyChunkMessage{
-				Content:     bodyBuf[:n],
-				Closed:      false, // TODO test if the connection is closed
-				MoreContent: !eob,
-			})
-			if err != nil {
-				if asgi.IsChannelFullError(err) {
-					// If the channel is full, then try again.
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-				return asgi.NewForwardError("can not send the message to the channel layer", err)
-			}
-			break
-		}
+	if !eof {
+		return sendMoreContent(req.Body, bodyChannel)
 	}
 	return nil
+}
+
+func sendMoreContent(body io.Reader, channel string) (err error) {
+	// Read more content from the body
+	content, eof, err := readBodyChunk(body)
+	if err != nil {
+		return asgi.NewForwardError("can not read the body of the request", err)
+	}
+
+	for i := 0; ; i++ {
+		err = channelLayer.Send(channel, &asgi.RequestBodyChunkMessage{
+			Content:     content,
+			Closed:      false, // TODO test if the connection is closed
+			MoreContent: !eof,
+		})
+		if err != nil {
+			if asgi.IsChannelFullError(err) && i < 1000 {
+				// If the channel is full, then try again.
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			return asgi.NewForwardError("can not send the message to the channel layer", err)
+		}
+		break
+	}
+	if !eof {
+		return sendMoreContent(body, channel)
+	}
+	return // This can return an channel full error or nil
 }
 
 // Receives a http response from the channel layer and writes it to the http response.
