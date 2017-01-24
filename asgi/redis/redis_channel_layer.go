@@ -120,7 +120,11 @@ func (r *ChannelLayer) Send(channel string, message asgi.SendMessenger) (err err
 	return nil
 }
 
-func lpopMany(prefix string, channels []string, conn redis.Conn) (channel, message string, err error) {
+func lpopMany(
+	prefix string,
+	channels []string,
+	conn redis.Conn,
+) (channel, message string, err error) {
 	// TODO: use lua
 	for _, channel = range channels {
 		message, err = redis.String(conn.Do("LPOP", prefix+channel))
@@ -128,7 +132,7 @@ func lpopMany(prefix string, channels []string, conn redis.Conn) (channel, messa
 			// The channel is empty
 			continue
 		} else {
-			// An error happend or a value was returned
+			// An error happened or a value was returned
 			return channel, message, err
 		}
 	}
@@ -137,7 +141,11 @@ func lpopMany(prefix string, channels []string, conn redis.Conn) (channel, messa
 }
 
 // Receive fills a message from one or more channels
-func (r *ChannelLayer) Receive(channels []string, block bool, message asgi.ReceiveMessenger) (channel string, err error) {
+func (r *ChannelLayer) Receive(
+	channels []string,
+	block bool,
+	message asgi.ReceiveMessenger) (channel string, err error) {
+
 	conn := redisPool.Get()
 	defer conn.Close()
 

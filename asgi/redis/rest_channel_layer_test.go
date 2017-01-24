@@ -74,8 +74,15 @@ func TestSendChannelFull(t *testing.T) {
 	sendMessage := testMessage{
 		s: "MyMessage",
 	}
-	c.Send("MyChannel", &sendMessage)
-	err := c.Send("MyChannel", &sendMessage)
+	channelname, err := c.NewChannel("TestSendChannelFull")
+	if err != nil {
+		t.Errorf("Did not expect an error, got %s", err)
+	}
+	err = c.Send(channelname, &sendMessage)
+	if err != nil {
+		t.Errorf("Did not expect an error, got %s", err)
+	}
+	err = c.Send(channelname, &sendMessage)
 	if !asgi.IsChannelFullError(err) {
 		t.Errorf("Expected a channel full error, got %s", err)
 	}

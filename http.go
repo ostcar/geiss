@@ -63,7 +63,7 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 	host := req.Host
 	if req.TLS != nil && !strings.Contains(req.Host, ":") {
 		// If no port was set in the host explicitly, the asgi implementation uses
-		// 80 as default. So if the request is a https request, we have to manualy
+		// 80 as default. So if the request is a https request, we have to manually
 		// set it to 443
 		host = req.Host + ":443"
 	}
@@ -137,7 +137,9 @@ func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 
 	// Set the status code of the http response and write the first part of the content
 	w.WriteHeader(rm.Status)
-	w.Write(rm.Content)
+	if _, err = w.Write(rm.Content); err != nil {
+		return asgi.NewForwardError("can not write to response", err)
+	}
 
 	// If there is more content, then receive it
 	moreContent := rm.MoreContent
@@ -149,7 +151,9 @@ func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 		}
 
 		// Write the received content to the http response.
-		w.Write(rcm.Content)
+		if _, err = w.Write(rcm.Content); err != nil {
+			return asgi.NewForwardError("can not write to response", err)
+		}
 
 		// See if there is still more content.
 		moreContent = rcm.MoreContent
@@ -174,9 +178,11 @@ func asgiHTTPHandler(w http.ResponseWriter, req *http.Request) error {
 		return asgi.NewForwardError("could not send message to the channel layer", err)
 	}
 
-	// Receive the response from the channel layer and write it to the http response.
+	// Receive the response from the channel layer and write it to the http
+	// response.
 	if err = receiveHTTPResponse(w, channel); err != nil {
-		return asgi.NewForwardError("could not receive message from the http response channel", err)
+		return asgi.NewForwardError(
+			"could not receive message from the http response channel", err)
 	}
 	return nil
 }

@@ -14,8 +14,9 @@ func CreateRedisPool(host string) {
 	redisPool = &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
-		MaxActive:   int(getOpenFilesLimit() / 3), // Use a third of the openfiles limit for redis connection
-		Wait:        true,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", host) },
+		// Use a third of the openfiles limit for redis connection
+		MaxActive: int(getOpenFilesLimit() / 3),
+		Wait:      true,
+		Dial:      func() (redis.Conn, error) { return redis.Dial("tcp", host) },
 	}
 }

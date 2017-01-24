@@ -119,12 +119,18 @@ func (rm *ResponseChunkMessage) Set(m Message) (err error) {
 	case nil:
 		rm.Content = []byte{}
 	default:
-		return fmt.Errorf("message has wrong format. \"content\" has to be []byte or nil, not %T", m["content"])
+		return fmt.Errorf(
+			"message has wrong format. \"content\" has to be []byte or nil, not %T",
+			m["content"],
+		)
 	}
 
 	rm.MoreContent, ok = m["more_content"].(bool)
-	if ok == false {
-		return fmt.Errorf("message has wrong format. \"more_content\" has to be bool not %T", m["more_content"])
+	if !ok {
+		return fmt.Errorf(
+			"message has wrong format. \"more_content\" has to be bool not %T",
+			m["more_content"],
+		)
 	}
 	return nil
 }
@@ -145,7 +151,10 @@ func (rm *ResponseMessage) Set(m Message) (err error) {
 
 	status, ok := m["status"].(uint64)
 	if !ok {
-		return fmt.Errorf("message has wrong format. \"status\" has to be uint64 not %T", m["status"])
+		return fmt.Errorf(
+			"message has wrong format. \"status\" has to be uint64 not %T",
+			m["status"],
+		)
 	}
 	rm.Status = int(status)
 
@@ -155,12 +164,18 @@ func (rm *ResponseMessage) Set(m Message) (err error) {
 	case nil:
 		rm.Content = []byte{}
 	default:
-		return fmt.Errorf("message has wrong format. \"content\" has to be []byte or nil, not %T", m["content"])
+		return fmt.Errorf(
+			"message has wrong format. \"content\" has to be []byte or nil, not %T",
+			m["content"],
+		)
 	}
 
 	rm.MoreContent, ok = m["more_content"].(bool)
-	if ok == false {
-		return fmt.Errorf("message has wrong format. \"more_content\" has to be bool not %T", m["more_content"])
+	if !ok {
+		return fmt.Errorf(
+			"message has wrong format. \"more_content\" has to be bool not %T",
+			m["more_content"],
+		)
 	}
 
 	rm.Headers = make(http.Header)

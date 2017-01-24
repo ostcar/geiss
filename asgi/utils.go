@@ -84,7 +84,12 @@ func ConvertHeader(httpHeaders http.Header) (headers [][2][]byte) {
 // GetMessageInTime tries to read a message from a channel.
 // When there is no message after httpResponseWait seconds, then return am
 // error.
-func GetMessageInTime(layer ChannelLayer, channel string, message ReceiveMessenger, wait time.Duration) (err error) {
+func GetMessageInTime(
+	layer ChannelLayer,
+	channel string,
+	message ReceiveMessenger,
+	wait time.Duration,
+) (err error) {
 	// Read from the channel. Try to get a response for httpResponseWait seconds.
 	// If there is no response in this time, then break.
 	timeout := time.After(wait)

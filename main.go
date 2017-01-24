@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/urfave/cli"
@@ -41,7 +42,7 @@ func main() {
 		cli.StringSliceFlag{
 			Name:  "static, s",
 			Value: nil,
-			Usage: "url path prefix and file path to serve static file in the form /static/:/path/to/static/files",
+			Usage: "url and file path to serve static files in the form /static/:/path/to/files",
 		},
 		cli.StringFlag{
 			Name:  "redis, r",
@@ -76,6 +77,7 @@ func main() {
 			c.StringSlice("static"))
 		return nil
 	}
-	app.Run(os.Args)
-
+	if err := app.Run(os.Args); err != nil {
+		log.Fatalf("Received an error: %s", err)
+	}
 }
