@@ -67,7 +67,7 @@ func (r *RequestMessage) Raw() Message {
 	m["path"] = r.Path
 	m["query_string"] = r.QueryString
 	m["root_path"] = r.RootPath
-	m["headers"] = convertHeader(r.Headers)
+	m["headers"] = ConvertHeader(r.Headers)
 	m["body"] = r.Body
 	m["body_channel"] = r.BodyChannel
 	m["client"], err = strToHost(r.Client)
@@ -164,7 +164,11 @@ func (rm *ResponseMessage) Set(m Message) (err error) {
 	}
 
 	rm.Headers = make(http.Header)
-	for _, value := range m["headers"].([]interface{}) {
+	headers, ok := m["headers"].([]interface{})
+	if !ok {
+		return fmt.Errorf("message has wrong format. \"headers\" has to be a list not %T", m["headers"])
+	}
+	for _, value := range headers {
 		// value should be a slice of interface{}
 		value := value.([]interface{})
 		k := string(value[0].([]byte))
@@ -202,7 +206,7 @@ func (cm *ConnectionMessage) Raw() Message {
 	m["path"] = cm.Path
 	m["query_string"] = cm.QueryString
 	m["root_path"] = cm.RootPath
-	m["headers"] = convertHeader(cm.Headers)
+	m["headers"] = ConvertHeader(cm.Headers)
 	m["client"], err = strToHost(cm.Client)
 	if err != nil {
 		log.Panicf("Could not create the client value for a connection message: %s", err)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -11,7 +10,7 @@ import (
 )
 
 const (
-	httpResponseWait = 30
+	httpResponseWait = 30 * time.Second
 	bodyChunkSize    = 500 * 1024 // Read 500kb at once
 )
 
@@ -123,34 +122,10 @@ func sendMoreContent(body io.Reader, channel string) (err error) {
 	return // This can return an channel full error or nil
 }
 
-// getMessageInTime tries to read a message from a channel.
-// When there is no message after httpResponseWait seconds, then return am
-// error.
-func getMessageInTime(channel string, message asgi.ReceiveMessenger) (err error) {
-	// Read from the channel. Try to get a response for httpResponseWait seconds.
-	// If there is no response in this time, then break.
-	timeout := time.After(httpResponseWait * time.Second)
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("did not get a response in time")
-		default:
-			c, err := channelLayer.Receive([]string{channel}, true, message)
-			if err != nil {
-				return asgi.NewForwardError("can not get a receive message from the channel laser", err)
-			}
-			if c != "" {
-				// Got a response
-				return nil
-			}
-		}
-	}
-}
-
 // Receives a http response from the channel layer and writes it to the http response.
 func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 	var rm asgi.ResponseMessage
-	err = getMessageInTime(channel, &rm)
+	err = asgi.GetMessageInTime(channelLayer, channel, &rm, httpResponseWait)
 	if err != nil {
 		return asgi.NewForwardError("can not get a message", err)
 	}
@@ -168,7 +143,7 @@ func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 	moreContent := rm.MoreContent
 	for moreContent {
 		var rcm asgi.ResponseChunkMessage
-		err = getMessageInTime(channel, &rcm)
+		err = asgi.GetMessageInTime(channelLayer, channel, &rcm, httpResponseWait)
 		if err != nil {
 			return asgi.NewForwardError("can not get a message", err)
 		}

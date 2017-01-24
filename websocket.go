@@ -196,7 +196,7 @@ func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*w
 
 	// Read from the channel. Try to get a response for httpResponseWait seconds.
 	// If there is no response in this time, then break.
-	timeout := time.After(httpResponseWait * time.Second)
+	timeout := time.After(httpResponseWait)
 receiveLoop:
 	for {
 		select {

@@ -54,7 +54,7 @@ func TestConvertHeader(t *testing.T) {
 	httpHeader.Add("Bar", "value1")
 	httpHeader.Add("bar", "value2")
 
-	headers := convertHeader(httpHeader)
+	headers := ConvertHeader(httpHeader)
 
 	if len(headers) != 3 {
 		t.Errorf("Expected 3 headers, got %d", len(headers))

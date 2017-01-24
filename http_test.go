@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ostcar/geiss/asgi"
 	"github.com/ostcar/geiss/asgi/redis"
 )
 
@@ -50,7 +51,7 @@ func TestForwardHTTPRequest(t *testing.T) {
 			t.Errorf("Did not expect an error, got : %s", err)
 		}
 
-		var d dummyReceiver
+		var d dummyMessanger
 		channel, err := channelLayer.Receive([]string{"http.request"}, false, &d)
 		if err != nil {
 			t.Errorf("Did not expect an error, got : %s", err)
@@ -77,7 +78,8 @@ func TestForwardBigHTTPRequest(t *testing.T) {
 	if err != nil {
 		t.Errorf("Did not expect an error, got : %s", err)
 	}
-	var d1 dummyReceiver
+
+	var d1 dummyMessanger
 	channel, err := channelLayer.Receive([]string{"http.request"}, false, &d1)
 	if err != nil {
 		t.Errorf("Did not expect an error, got : %s", err)
@@ -90,7 +92,7 @@ func TestForwardBigHTTPRequest(t *testing.T) {
 		t.Errorf("Expected more content")
 	}
 
-	var d2 dummyReceiver
+	var d2 dummyMessanger
 	channel, err = channelLayer.Receive([]string{bodyChannel}, false, &d2)
 	if err != nil {
 		t.Errorf("Did not expect an error, got : %s", err)
@@ -107,4 +109,76 @@ func TestForwardBigHTTPRequest(t *testing.T) {
 	if !bytes.Equal(fullBody, request.Body.(*testBody).backup.Bytes()) {
 		t.Error("Expected the body of both messages to be the same as the request body.")
 	}
+}
+
+func TestReceiveHTTPResponse(t *testing.T) {
+	var d1 dummyMessanger
+	d1.message = make(asgi.Message)
+
+	headers := [][2][]byte{[2][]byte{[]byte("MyKey"), []byte("MyValue")}}
+	d1.message["status"] = 200
+	d1.message["content"] = []byte("foobar")
+	d1.message["more_content"] = false
+	d1.message["headers"] = headers
+
+	for _, d := range []dummyMessanger{d1} {
+		err := channelLayer.Send("my_response_channel", &d)
+		if err != nil {
+			t.Errorf("Did not expect an error, got: %s", err)
+		}
+		response := httptest.NewRecorder()
+		err = receiveHTTPResponse(response, "my_response_channel")
+		if err != nil {
+			t.Fatalf("Did not expect an error, got: %s", err)
+		}
+		if compareMessageHeader(asgi.ConvertHeader(response.Header()), headers) {
+			t.Errorf("Received wrong headers. got %v", response.Header())
+		}
+		if response.Code != d.message["status"].(int) {
+			t.Errorf("Reveived wrong status code. Expected %d, got %d", d.message["status"].(int), response.Code)
+		}
+		if !bytes.Equal(response.Body.Bytes(), d.message["content"].([]byte)) {
+			t.Errorf("Reveived wrong content. Expected %s, got %s", d.message["content"].([]byte), response.Body.Bytes())
+		}
+	}
+}
+
+func TestReceiveBigHTTPResponse(t *testing.T) {
+	var d1a, d1b dummyMessanger
+	d1a.message = make(asgi.Message)
+	d1b.message = make(asgi.Message)
+	headers := [][2][]byte{[2][]byte{[]byte("OtherKey"), []byte("OtherValue")}}
+	d1a.message["status"] = 201
+	d1a.message["content"] = []byte("foobar")
+	d1a.message["more_content"] = true
+	d1a.message["headers"] = headers
+	err := channelLayer.Send("my_response_channel", &d1a)
+	if err != nil {
+		t.Errorf("Did not expect an error, got: %s", err)
+	}
+
+	d1b.message["content"] = []byte("even more content")
+	d1b.message["more_content"] = false
+	err = channelLayer.Send("my_response_channel", &d1b)
+	if err != nil {
+		t.Errorf("Did not expect an error, got: %s", err)
+	}
+
+	response := httptest.NewRecorder()
+	err = receiveHTTPResponse(response, "my_response_channel")
+	if err != nil {
+		t.Fatalf("Did not expect an error, got: %s", err)
+	}
+	if compareMessageHeader(asgi.ConvertHeader(response.Header()), headers) {
+		t.Errorf("Received wrong headers. got %v", response.Header())
+	}
+	if response.Code != d1a.message["status"].(int) {
+		t.Errorf("Reveived wrong status code. Expected %d, got %d", d1a.message["status"].(int), response.Code)
+	}
+	fullContent := d1a.message["content"].([]byte)
+	fullContent = append(fullContent, d1b.message["content"].([]byte)...)
+	if !bytes.Equal(response.Body.Bytes(), fullContent) {
+		t.Errorf("Reveived wrong content. Expected %s, got %s", fullContent, response.Body.Bytes())
+	}
+
 }

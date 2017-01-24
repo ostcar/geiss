@@ -70,13 +70,37 @@ func strToHost(host string) (hp [2]interface{}, err error) {
 	return
 }
 
-// Converts http.Headers in the form that the asgi specs
+// ConvertHeader converts http.Headers in the form that the asgi specs
 // expects them
-func convertHeader(httpHeaders http.Header) (headers [][2][]byte) {
+func ConvertHeader(httpHeaders http.Header) (headers [][2][]byte) {
 	for headerKey, headerValues := range httpHeaders {
 		for _, headerValue := range headerValues {
 			headers = append(headers, [2][]byte{[]byte(strings.ToLower(headerKey)), []byte(headerValue)})
 		}
 	}
 	return
+}
+
+// GetMessageInTime tries to read a message from a channel.
+// When there is no message after httpResponseWait seconds, then return am
+// error.
+func GetMessageInTime(layer ChannelLayer, channel string, message ReceiveMessenger, wait time.Duration) (err error) {
+	// Read from the channel. Try to get a response for httpResponseWait seconds.
+	// If there is no response in this time, then break.
+	timeout := time.After(wait)
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("did not get a response in time")
+		default:
+			c, err := layer.Receive([]string{channel}, true, message)
+			if err != nil {
+				return NewForwardError("can not get a receive message from the channel laser", err)
+			}
+			if c != "" {
+				// Got a response
+				return nil
+			}
+		}
+	}
 }
