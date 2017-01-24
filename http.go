@@ -123,34 +123,36 @@ func sendMoreContent(body io.Reader, channel string) (err error) {
 	return // This can return an channel full error or nil
 }
 
-// Receives a http response from the channel layer and writes it to the http response.
-func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
-	// Get message from the channel layer.
-	var rm asgi.ResponseMessage
-	var c string
-
+// getMessageInTime tries to read a message from a channel.
+// When there is no message after httpResponseWait seconds, then return am
+// error.
+func getMessageInTime(channel string, message asgi.ReceiveMessenger) (err error) {
 	// Read from the channel. Try to get a response for httpResponseWait seconds.
 	// If there is no response in this time, then break.
 	timeout := time.After(httpResponseWait * time.Second)
-responseLoop:
 	for {
 		select {
 		case <-timeout:
 			return fmt.Errorf("did not get a response in time")
 		default:
-			c, err = channelLayer.Receive([]string{channel}, true, &rm)
+			c, err := channelLayer.Receive([]string{channel}, true, message)
 			if err != nil {
-				if asgi.IsChannelFullError(err) {
-					// If the channel is full, then we try again.
-					continue responseLoop
-				}
 				return asgi.NewForwardError("can not get a receive message from the channel laser", err)
 			}
 			if c != "" {
 				// Got a response
-				break responseLoop
+				return nil
 			}
 		}
+	}
+}
+
+// Receives a http response from the channel layer and writes it to the http response.
+func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
+	var rm asgi.ResponseMessage
+	err = getMessageInTime(channel, &rm)
+	if err != nil {
+		return asgi.NewForwardError("can not get a message", err)
 	}
 
 	// Write the headers from the response message to the http resonse
@@ -164,36 +166,18 @@ responseLoop:
 
 	// If there is more content, then receive it
 	moreContent := rm.MoreContent
-	timeout = time.After(httpResponseWait * time.Second)
-responseChunkLoop:
 	for moreContent {
-		select {
-		case <-timeout:
-			// We got the information, that more content is comming, but it don't.
-			// So just return and thereby close the http connection.
-			return nil
-		default:
-			// Get message from the channel layer
-			var rcm asgi.ResponseChunkMessage
-			c, err := channelLayer.Receive([]string{channel}, true, &rcm)
-			if err != nil {
-				if asgi.IsChannelFullError(err) {
-					// If the channel is full, then we try again.
-					continue responseChunkLoop
-				}
-				return asgi.NewForwardError("can not get a receive message from the channel laser", err)
-			}
-			if c == "" {
-				// Did not get any message
-				continue responseChunkLoop
-			}
-
-			// Write the received content to the http response.
-			w.Write(rcm.Content)
-
-			// See if there is still more content.
-			moreContent = rcm.MoreContent
+		var rcm asgi.ResponseChunkMessage
+		err = getMessageInTime(channel, &rcm)
+		if err != nil {
+			return asgi.NewForwardError("can not get a message", err)
 		}
+
+		// Write the received content to the http response.
+		w.Write(rcm.Content)
+
+		// See if there is still more content.
+		moreContent = rcm.MoreContent
 	}
 	return nil
 }
