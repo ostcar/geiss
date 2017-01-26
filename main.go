@@ -17,11 +17,17 @@ import (
 var channelLayer asgi.ChannelLayer
 var debug bool
 
+// Version to show in the help text and the --version flag. It is not set
+// directly in the sourcecode but set at complite time with
+// go build -ldflags "-X main.Version=1.0.0
+var Version = "development"
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "geiss"
 	app.Usage = "an asgi protocol server"
 	app.HideHelp = true
+	app.Version = Version
 	app.ArgsUsage = " " // If it is an empty string, then it shows a stupid default text
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
