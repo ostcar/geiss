@@ -3,6 +3,7 @@ package asgi
 import (
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,25 +47,24 @@ func (e *ForwardError) Error() string {
 // strToHost converts a string in the form "host:port" to an two element array
 // where the first element is the host as string and the second argument is
 // the port as integer.
-func strToHost(host string) (hp [2]interface{}, err error) {
-	if host == "" {
-		err = fmt.Errorf("host can not be empty")
+func strToHost(hostport string) (hp [2]interface{}, err error) {
+	if hostport == "" {
+		err = fmt.Errorf("The argument for strToHost can not be empty")
+		return
 	}
-	s := strings.Split(host, ":")
-	switch len(s) {
-	case 1:
-		// Host was given in the form host (without a port)
-		hp[0] = s[0]
-		hp[1] = 80
-	case 2:
-		hp[0] = s[0]
-		hp[1], err = strconv.Atoi(s[1])
-		if err != nil {
-			err = fmt.Errorf("can not convert %s to int", s[1])
-			return
-		}
-	default:
-		err = fmt.Errorf("host has wrong format: %s", host)
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil && strings.Contains(err.Error(), "missing port in address") {
+		// Try once more with the port 80
+		err = nil
+		host, port, err = net.SplitHostPort(hostport + ":80")
+	}
+	if err != nil {
+		return
+	}
+	hp[0] = host
+	hp[1], err = strconv.Atoi(port)
+	if err != nil {
+		err = fmt.Errorf("can not convert %s to int", port)
 		return
 	}
 	return

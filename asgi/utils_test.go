@@ -43,7 +43,7 @@ func TestStrToHost(t *testing.T) {
 	for _, wrongStr := range []string{"", "local:123:45", "local:one"} {
 		hp, err = strToHost(wrongStr)
 		if err == nil {
-			t.Errorf("Expected an error. Did not get one, return value was: %v", hp)
+			t.Errorf("Expected an error for '%s'. Did not get one, return value was: %v", wrongStr, hp)
 		}
 	}
 }
