@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/ostcar/geiss/asgi"
 )
@@ -22,7 +23,7 @@ func messageIsRequest(m asgi.Message, r *http.Request) (bool, string) {
 			return false, fmt.Sprintf("got an body in the message, but non in the requets: %s", messageBody)
 		}
 	} else {
-		if !bytes.Equal(requestBody.backup.Bytes(), messageBody) {
+		if !bytes.Equal([]byte(requestBody.backup), messageBody) {
 			return false, "message and request have different body."
 		}
 	}
@@ -56,17 +57,31 @@ func (i *bigReader) Read(p []byte) (int, error) {
 
 type testBody struct {
 	body   io.Reader
-	backup bytes.Buffer
+	backup string
+	step   int
 }
 
-func newTestBody(r io.Reader) *testBody {
+func newTestBody(s string) *testBody {
 	return &testBody{
-		body: r,
+		body:   strings.NewReader(s),
+		backup: s,
+	}
+}
+
+func newSlowTestBody(s string, step int) *testBody {
+	return &testBody{
+		body:   strings.NewReader(s),
+		backup: s,
+		step:   step,
 	}
 }
 
 func (t *testBody) Read(p []byte) (n int, err error) {
-	return io.TeeReader(t.body, &t.backup).Read(p)
+	if t.step > 0 {
+		p = p[:t.step]
+	}
+	tmp, err := t.body.Read(p)
+	return tmp, err
 }
 
 func (t *testBody) Close() error {
