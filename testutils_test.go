@@ -80,8 +80,7 @@ func (t *testBody) Read(p []byte) (n int, err error) {
 	if t.step > 0 {
 		p = p[:t.step]
 	}
-	tmp, err := t.body.Read(p)
-	return tmp, err
+	return t.body.Read(p)
 }
 
 func (t *testBody) Close() error {
