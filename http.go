@@ -15,22 +15,16 @@ const (
 )
 
 // readBodyChunk reads bodyChunkSize bytes from an io.Reader, and returns it as
-// fist argument. eof is true, when there is no more content after this call.
-// If the body is exactly bodyChunkSize big, it can happen that eof is false but
-// there is no more content in the reader.
+// first argument. eof is true when there is no more content after this call.
 func readBodyChunk(body io.Reader) (content []byte, eof bool, err error) {
+	var n int
 	content = make([]byte, bodyChunkSize)
-
-	n, err := body.Read(content)
-	if err != nil && err != io.EOF {
-		return nil, false, err
-	}
-
-	// If n is smaller then the len of content, then the body has to be empty
-	if n < bodyChunkSize || err == io.EOF {
+	n, err = io.ReadFull(body, content)
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		err = nil
 		eof = true
 	}
-	return content[:n], eof, nil
+	return content[:n], eof, err
 }
 
 // Create the reply channel name for a http.response channel.
@@ -42,11 +36,11 @@ func createResponseReplyChannel() (replyChannel string, err error) {
 	return replyChannel, nil
 }
 
-// Forwars an http request to the channel layer. Returns the reply channel name.
+// Forwards a HTTP request to the channel layer. Returns the reply channel name.
 func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 	var bodyChannel string
 
-	// Read the firt part of the body
+	// Read the first part of the body
 	content, eof, err := readBodyChunk(req.Body)
 	if err != nil {
 		return asgi.NewForwardError("can not read the body of the request", err)

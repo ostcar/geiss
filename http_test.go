@@ -34,14 +34,14 @@ func TestCreateResponseReplyChannel(t *testing.T) {
 }
 
 func TestForwardHTTPRequest(t *testing.T) {
-	bigBody := bigReader(500 * 1024)
 	requests := []*http.Request{
 		httptest.NewRequest("GET", "http://localhost/", nil),
-		httptest.NewRequest("GET", "http://localhost/", newTestBody(strings.NewReader("my body"))),
+		httptest.NewRequest("GET", "http://localhost/", newTestBody("my body")),
+		httptest.NewRequest("GET", "http://localhost/", newSlowTestBody("my body", 2)),
 		httptest.NewRequest("GET", "http://localhost:8000/", nil),
 		httptest.NewRequest("GET", "https://localhost/", nil),
 		httptest.NewRequest("GET", "https://localhost:8430/", nil),
-		httptest.NewRequest("GET", "https://localhost", newTestBody(&bigBody)),
+		httptest.NewRequest("GET", "https://localhost", newTestBody(strings.Repeat("x", 499*1024))),
 	}
 
 	for _, request := range requests {
@@ -75,8 +75,7 @@ func TestForwardHTTPRequest(t *testing.T) {
 }
 
 func TestForwardBigHTTPRequest(t *testing.T) {
-	bigBody := bigReader(1000 * 1024)
-	request := httptest.NewRequest("GET", "https://localhost", newTestBody(&bigBody))
+	request := httptest.NewRequest("GET", "https://localhost", newTestBody(strings.Repeat("x", 999*1024)))
 	err := forwardHTTPRequest(request, "some-channel")
 	if err != nil {
 		t.Errorf("Did not expect an error, got : %s", err)
@@ -109,7 +108,7 @@ func TestForwardBigHTTPRequest(t *testing.T) {
 	fullBody := make([]byte, 0)
 	fullBody = append(fullBody, d1.message["body"].([]byte)...)
 	fullBody = append(fullBody, d2.message["content"].([]byte)...)
-	if !bytes.Equal(fullBody, request.Body.(*testBody).backup.Bytes()) {
+	if !bytes.Equal(fullBody, []byte(request.Body.(*testBody).backup)) {
 		t.Error("Expected the body of both messages to be the same as the request body.")
 	}
 }
