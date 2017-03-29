@@ -47,16 +47,22 @@ func TestSendAndReceive(t *testing.T) {
 		sendMessage := testMessage{
 			s: "MyMessage",
 		}
-		err := c.Send("MyChannel", &sendMessage)
+		err := c.Send("MyChannel", sendMessage.Raw())
+		if err != nil {
+			t.Errorf("Did not expect any error, got %s", err)
+		}
+
+		channel, message, err := c.Receive([]string{"MyChannel"}, block)
 		if err != nil {
 			t.Errorf("Did not expect any error, got %s", err)
 		}
 
 		var receiveMessage testMessage
-		channel, err := c.Receive([]string{"MyChannel"}, block, &receiveMessage)
+		err = receiveMessage.Set(message)
 		if err != nil {
 			t.Errorf("Did not expect any error, got %s", err)
 		}
+
 		if channel != "MyChannel" {
 			t.Errorf("Did expect the channel name MyChannel, got \"%s\"", channel)
 		}
@@ -78,11 +84,11 @@ func TestSendChannelFull(t *testing.T) {
 	if err != nil {
 		t.Errorf("Did not expect an error, got %s", err)
 	}
-	err = c.Send(channelname, &sendMessage)
+	err = c.Send(channelname, sendMessage.Raw())
 	if err != nil {
 		t.Errorf("Did not expect an error, got %s", err)
 	}
-	err = c.Send(channelname, &sendMessage)
+	err = c.Send(channelname, sendMessage.Raw())
 	if !asgi.IsChannelFullError(err) {
 		t.Errorf("Expected a channel full error, got %s", err)
 	}
