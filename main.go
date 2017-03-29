@@ -78,6 +78,8 @@ func main() {
 			c.String("redis-prefix"),
 			c.Int("redis-capacity"))
 
+		go globalReceive()
+
 		startHTTPServer(
 			fmt.Sprintf("%s:%d", c.String("host"), c.Int64("port")),
 			c.StringSlice("static"))

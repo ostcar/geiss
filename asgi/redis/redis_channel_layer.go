@@ -17,9 +17,6 @@ import (
 )
 
 // Sets the time in seconds that Receive() with block=true should wait for a message.
-// Currently this can not be more the none second to stay compatible with applications
-// that do not send an accept message after an open websocket connection but do
-// use reconnecting-websocket.
 const blPopTimeout = 3
 
 var luaChanSend *redis.Script
@@ -94,17 +91,17 @@ func (r *ChannelLayer) NewChannel(channelPrefix string) (channel string, err err
 }
 
 // Send sends a message to a specific channel
-func (r *ChannelLayer) Send(channel string, message asgi.SendMessenger) (err error) {
+func (r *ChannelLayer) Send(channel string, message asgi.Message) (err error) {
 	conn := redisPool.Get()
 	defer conn.Close()
 
 	messageKey := r.prefix + uuid.NewV4().String()
 	channelKey := r.prefix + channel
 
-	// Encode the message
-	bytes, err := encodeMessage(message)
+	// Encodes a message to the msgpack format.
+	bytes, err := msgpack.Marshal(message)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not encode message %v, got %s", message, err)
 	}
 
 	// Use the lua script to set both keys
@@ -140,11 +137,10 @@ func lpopMany(
 	return "", "", redis.ErrNil
 }
 
-// Receive fills a message from one or more channels
+// Receive reads from a channel and returns a raw message objekt
 func (r *ChannelLayer) Receive(
 	channels []string,
-	block bool,
-	message asgi.ReceiveMessenger) (channel string, err error) {
+	block bool) (channel string, message asgi.Message, err error) {
 
 	conn := redisPool.Get()
 	defer conn.Close()
@@ -167,9 +163,9 @@ func (r *ChannelLayer) Receive(
 		v, err = redis.Strings(conn.Do("BLPOP", args...))
 		if err == redis.ErrNil {
 			// Got timeout. Nothing to receive
-			return "", nil
+			return "", nil, nil
 		} else if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		channel = strings.TrimPrefix(v[0], r.prefix)
 		messageKey = v[1]
@@ -177,45 +173,27 @@ func (r *ChannelLayer) Receive(
 		channel, messageKey, err = lpopMany(r.prefix, channels, conn)
 		if err == redis.ErrNil {
 			// Nothing to receive
-			return "", nil
+			return "", nil, nil
 		} else if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 
 	// If we are here, there is a channel with a message in messageKey
 	b, err := redis.Bytes(conn.Do("GET", messageKey))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	// b is an encoded message. Decode it by creating a message object
-	err = decodeMessage(b, message)
+	// b is an encoded message. First decode it.
+	if err = msgpack.Unmarshal(b, &message); err != nil {
+		return "", nil, fmt.Errorf("can not decode message %s, got %s", b, err)
+	}
+
+	// check if there is a channel information in the raw message
+	if v, ok := message["__asgi_channel__"]; ok {
+		channel = v.(string)
+		delete(message, "__asgi_channel__")
+	}
 	return
-}
-
-// decodes a message in msgpack format.
-func decodeMessage(bytes []byte, m asgi.ReceiveMessenger) (err error) {
-	var raw asgi.Message
-	err = msgpack.Unmarshal(bytes, &raw)
-	if err != nil {
-		err = fmt.Errorf("can not decode message %s, got %s", bytes, err)
-		return err
-	}
-	err = m.Set(raw)
-	if err != nil {
-		err = fmt.Errorf("can not create a message object from the message %s, got %s", m, err)
-		return err
-	}
-	return nil
-}
-
-// encodes a message to the msgpack format.
-func encodeMessage(m asgi.SendMessenger) (b []byte, err error) {
-	bytes, err := msgpack.Marshal(m.Raw())
-	if err != nil {
-		err = fmt.Errorf("can not encode message %v, got %s", m, err)
-		return nil, err
-	}
-	return bytes, nil
 }

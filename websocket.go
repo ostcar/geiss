@@ -50,57 +50,35 @@ func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
 	// If an error happens, close the websocket connection.
 }
 
-// Read from a channel (expecting a websocket.send!*** channel) and sends
-// any data to the receive channel. Closes the channel if anything goes wrong.
-// Shuts down if the value closed is true.
-func readChannelLayer(channel string, receive chan asgi.SendCloseAcceptMessage, closed *bool) {
-	defer close(receive)
-	for !*closed {
-		// Read from the channel layer.
-		var am asgi.SendCloseAcceptMessage
-		c, err := channelLayer.Receive([]string{channel}, true, &am)
-		if err != nil {
-			log.Printf("could not get the message: %s", err)
-			return
-		}
-		if c != "" {
-			// If we read the message from the channel (no timeout) then:
-			// Send the received value to the channel.
-			receive <- am
-		}
-	}
-}
-
 // Handles an opened websocket connection by forwarding the messages between the
 // channel layer and the websocket connection.
-func websocketLoop(conn *websocket.Conn, channel string, path string) {
+func websocketLoop(conn *websocket.Conn, channel string, readChan chan asgi.Message, path string) {
 	order := 0
 	// Code that is sent to the channel layer. 1006 is used, when no close message was received
 	closeCode := 1006
 	readFromWebsocket := make(chan websocketMessage)
-	readFromChannelLayer := make(chan asgi.SendCloseAcceptMessage)
 	closed := false
 
 	// In the end: Close the websocket connection and inform the channel layer about it.
 	defer func() {
+		close(readChan)
 		closed = true
 		order++
-		err := channelLayer.Send("websocket.disconnect", &asgi.DisconnectionMessage{
+		dm := asgi.DisconnectionMessage{
 			ReplyChannel: channel,
 			Code:         closeCode,
 			Path:         path,
 			Order:        order,
-		})
+		}
+		err := channelLayer.Send("websocket.disconnect", dm.Raw())
 		if err != nil {
 			log.Printf("can not close the websocket connection, got %s", err)
 		}
 		conn.Close()
 	}()
 
-	// Create goroutines to read to the websocket connection and the channel
-	// layer at the same time.
+	// Create goroutines to read from the websocket connection.
 	go readWebsocket(conn, readFromWebsocket)
-	go readChannelLayer(channel, readFromChannelLayer, &closed)
 
 	for {
 		select {
@@ -121,13 +99,14 @@ func websocketLoop(conn *websocket.Conn, channel string, path string) {
 
 			// Forward it to the channel layer
 			order++
-			err := channelLayer.Send("websocket.receive", &asgi.ReceiveMessage{
+			rm := asgi.ReceiveMessage{
 				ReplyChannel: channel,
 				Path:         path,
 				Content:      cMessage.Content,
 				Type:         cMessage.Type,
 				Order:        order,
-			})
+			}
+			err := channelLayer.Send("websocket.receive", rm.Raw())
 			if err != nil {
 				if asgi.IsChannelFullError(err) {
 					// TODO: The specs allow us to retry to sent the message. So do
@@ -137,22 +116,20 @@ func websocketLoop(conn *websocket.Conn, channel string, path string) {
 				return
 			}
 
-		case r, ok := <-readFromChannelLayer:
+		case message := <-readChan:
 			// Received a message from the channel layer
-			if !ok {
-				// The channel was closed. An error happened. So close the connection
-				return
-			}
+			var am asgi.SendCloseAcceptMessage
+			am.Set(message)
 
 			// Send the message to the websocket connection
 			var t int
 			var content []byte
-			if r.Text != "" {
+			if am.Text != "" {
 				t = websocket.TextMessage
-				content = []byte(r.Text)
-			} else if r.Bytes != nil {
+				content = []byte(am.Text)
+			} else if am.Bytes != nil {
 				t = websocket.BinaryMessage
-				content = r.Bytes
+				content = am.Bytes
 			} else {
 				// Got an message without data. Skip it.
 				continue
@@ -167,7 +144,7 @@ func websocketLoop(conn *websocket.Conn, channel string, path string) {
 
 // Create the reply channel name for a websocket.send channel.
 func createWebsocketReplyChannel() (replyChannel string, err error) {
-	replyChannel, err = channelLayer.NewChannel("websocket.send!")
+	replyChannel, err = channelLayer.NewChannel(globalChannelname)
 	if err != nil {
 		return "", asgi.NewForwardError("could not create a new channel name", err)
 	}
@@ -177,7 +154,7 @@ func createWebsocketReplyChannel() (replyChannel string, err error) {
 // Sends the websocket handshake to the channel layer..
 func forwardWebsocketConnection(req *http.Request, channel string) (err error) {
 	// Send a connection message to the channel layer.
-	err = channelLayer.Send("websocket.connect", &asgi.ConnectionMessage{
+	cm := asgi.ConnectionMessage{
 		ReplyChannel: channel,
 		Scheme:       req.URL.Scheme,
 		Path:         req.URL.Path,
@@ -185,7 +162,8 @@ func forwardWebsocketConnection(req *http.Request, channel string) (err error) {
 		Headers:      req.Header,
 		Client:       req.Host, //TODO use the right value
 		Server:       req.Host,
-	})
+	}
+	err = channelLayer.Send("websocket.connect", cm.Raw())
 	if err != nil {
 		return asgi.NewForwardError("can not sent message to the channel layer", err)
 	}
@@ -194,39 +172,28 @@ func forwardWebsocketConnection(req *http.Request, channel string) (err error) {
 
 // Handles the response after a websocket connection. Returns the websocket connection
 // if it was opend.
-func receiveAccept(
-	w http.ResponseWriter,
-	req *http.Request,
-	channel string,
-) (*websocket.Conn, error) {
+func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, chan asgi.Message, error) {
 	// Get a message from the channel layer.
 	var am asgi.SendCloseAcceptMessage
+	c := make(chan asgi.Message)
+	globalReceiveChan <- globalReceiveData{channelname: channel, receiver: c}
 
 	// Read from the channel. Try to get a response for httpResponseWait seconds.
 	// If there is no response in this time, then break.
 	timeout := time.After(httpResponseWait)
-receiveLoop:
-	for {
-		select {
-		case <-timeout:
-			return nil, fmt.Errorf("did not get a response in time")
-		default:
-			c, err := channelLayer.Receive([]string{channel}, true, &am)
-			if err != nil {
-				return nil, asgi.NewForwardError("could not read accept message from the channel layer", err)
-			}
-			if c != "" {
-				// Got a response
-				break receiveLoop
-			}
-		}
+	select {
+	case <-timeout:
+		return nil, nil, fmt.Errorf("did not get a response in time")
+
+	case message := <-c:
+		am.Set(message)
 	}
 
 	if am.Text != "" || am.Bytes != nil || am.Accept {
 		// Finish the websocket handshake by upgrading the http request.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
-			return nil, asgi.NewForwardError("could not upgrade the http request", err)
+			return nil, nil, asgi.NewForwardError("could not upgrade the http request", err)
 		}
 
 		// Send the first data, if there is one.
@@ -238,44 +205,44 @@ receiveLoop:
 		if err != nil {
 			conn.Close()
 			if _, ok := err.(*websocket.CloseError); !ok {
-				return nil, fmt.Errorf("Client closed the connection before first message could be send")
+				return nil, nil, fmt.Errorf("Client closed the connection before first message could be send")
 			}
-			return nil, asgi.NewForwardError("could not send first message to the websocket connection", err)
+			return nil, nil, asgi.NewForwardError("could not send first message to the websocket connection", err)
 		}
 
 		// The connection should be closed again.
 		if am.Close != 0 {
 			// The connection was opened but should be closed again
 			if err = conn.CloseHandler()(am.Close, ""); err != nil {
-				return nil, asgi.NewForwardError("Could not close the websocket connection", err)
+				return nil, nil, asgi.NewForwardError("Could not close the websocket connection", err)
 			}
 			// An close message was send to the client but we return the connection
 			// anyway, because the connection as to be closed after receiving the
 			// close message from the client.
 		}
-		return conn, nil
+		return conn, c, nil
 	}
 
 	// If we are here, then the websocket connection should not be opened
 	if am.Close == 0 {
 		// At this point, close has to be set.
-		return nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
+		return nil, nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
 	}
 	w.WriteHeader(403)
-	return nil, nil
+	return nil, nil, nil
 }
 
 // Handels an request that wants to be upgraded to a websocket connection.
 // Returns an error if one happen.
 func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) (err error) {
 	// Create a reply channel name.
-	channel, err := createWebsocketReplyChannel()
+	channelname, err := createWebsocketReplyChannel()
 	if err != nil {
 		return asgi.NewForwardError("can not create new channel for websocket send", err)
 	}
 
-	// Send the request to the channel layer and get the reply channel name.
-	if err = forwardWebsocketConnection(req, channel); err != nil {
+	// Send the request to the channel layer.
+	if err = forwardWebsocketConnection(req, channelname); err != nil {
 		if asgi.IsChannelFullError(err) {
 			w.WriteHeader(503)
 			return nil
@@ -285,7 +252,7 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) (err error) 
 
 	// Try to receive the answer from the channel layer and open the websocket
 	// connection, if it tells us to do.
-	conn, err := receiveAccept(w, req, channel)
+	conn, readChan, err := receiveAccept(w, req, channelname)
 	if err != nil {
 		return fmt.Errorf("could not establish websocket connection: %s", err)
 	}
@@ -296,6 +263,6 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) (err error) 
 	}
 
 	// The websocket connection was opened. Handle all messages in a loop
-	websocketLoop(conn, channel, req.URL.Path)
+	websocketLoop(conn, channelname, readChan, req.URL.Path)
 	return nil
 }

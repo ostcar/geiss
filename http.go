@@ -29,7 +29,7 @@ func readBodyChunk(body io.Reader) (content []byte, eof bool, err error) {
 
 // Create the reply channel name for a http.response channel.
 func createResponseReplyChannel() (replyChannel string, err error) {
-	replyChannel, err = channelLayer.NewChannel("http.response!")
+	replyChannel, err = channelLayer.NewChannel(globalChannelname)
 	if err != nil {
 		return "", asgi.NewForwardError("could not create a new channel name", err)
 	}
@@ -62,8 +62,7 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 		host = req.Host + ":443"
 	}
 
-	// Send the Request message to the channel layer
-	err = channelLayer.Send("http.request", &asgi.RequestMessage{
+	rm := asgi.RequestMessage{
 		ReplyChannel: replyChannel,
 		HTTPVersion:  req.Proto,
 		Method:       req.Method,
@@ -75,7 +74,10 @@ func forwardHTTPRequest(req *http.Request, replyChannel string) (err error) {
 		BodyChannel:  bodyChannel,
 		Client:       req.RemoteAddr,
 		Server:       host,
-	})
+	}
+
+	// Send the Request message to the channel layer
+	err = channelLayer.Send("http.request", rm.Raw())
 	if err != nil {
 		// If err is an channel full error, we forward it. The asgi specs define, that
 		// we should not retry in this case, but return a 503.
@@ -95,11 +97,12 @@ func sendMoreContent(body io.Reader, channel string) (err error) {
 	}
 
 	for i := 0; ; i++ {
-		err = channelLayer.Send(channel, &asgi.RequestBodyChunkMessage{
+		rbc := asgi.RequestBodyChunkMessage{
 			Content:     content,
 			Closed:      false, // TODO test if the connection is closed
 			MoreContent: !eof,
-		})
+		}
+		err = channelLayer.Send(channel, rbc.Raw())
 		if err != nil {
 			if asgi.IsChannelFullError(err) && i < 1000 {
 				// If the channel is full, then try again.
@@ -118,11 +121,15 @@ func sendMoreContent(body io.Reader, channel string) (err error) {
 
 // Receives a http response from the channel layer and writes it to the http response.
 func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
+	c := make(chan asgi.Message)
+	defer close(c)
+	globalReceiveChan <- globalReceiveData{channelname: channel, receiver: c}
+
+	// Wait for the response
+	//TODO Use a timeout
+	message := <-c
 	var rm asgi.ResponseMessage
-	err = asgi.GetMessageInTime(channelLayer, channel, &rm, httpResponseWait)
-	if err != nil {
-		return asgi.NewForwardError("can not get a message", err)
-	}
+	rm.Set(message)
 
 	// Write the headers from the response message to the http resonse
 	for k, v := range rm.Headers {
@@ -138,11 +145,11 @@ func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 	// If there is more content, then receive it
 	moreContent := rm.MoreContent
 	for moreContent {
+		// Wait for the response
+		//TODO Use a timeout
+		message = <-c
 		var rcm asgi.ResponseChunkMessage
-		err = asgi.GetMessageInTime(channelLayer, channel, &rcm, httpResponseWait)
-		if err != nil {
-			return asgi.NewForwardError("can not get a message", err)
-		}
+		rcm.Set(message)
 
 		// Write the received content to the http response.
 		if _, err = w.Write(rcm.Content); err != nil {

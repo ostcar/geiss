@@ -80,32 +80,3 @@ func ConvertHeader(httpHeaders http.Header) (headers [][2][]byte) {
 	}
 	return
 }
-
-// GetMessageInTime tries to read a message from a channel.
-// When there is no message after httpResponseWait seconds, then return am
-// error.
-func GetMessageInTime(
-	layer ChannelLayer,
-	channel string,
-	message ReceiveMessenger,
-	wait time.Duration,
-) (err error) {
-	// Read from the channel. Try to get a response for httpResponseWait seconds.
-	// If there is no response in this time, then break.
-	timeout := time.After(wait)
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("did not get a response in time")
-		default:
-			c, err := layer.Receive([]string{channel}, true, message)
-			if err != nil {
-				return NewForwardError("can not get a receive message from the channel laser", err)
-			}
-			if c != "" {
-				// Got a response
-				return nil
-			}
-		}
-	}
-}
