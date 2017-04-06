@@ -10,7 +10,7 @@ build:
 	$(eval VERSION := $(shell git describe --tags))
 	$(BUILD)
 
-release: set_version build_release
+release: clean set_version build_release
 	github-release release \
 		--user $(GITHUB_USER) \
 		--repo $(GITHUB_REPO) \
@@ -31,7 +31,7 @@ endif
 	git push --tags
 
 clean:
-	rm -r release
+	rm -fr release
 
 build_release: release/geiss_linux_32 release/geiss_linux_64 release/geiss_windows_32.exe release/geiss_windows_64.exe release/geiss_mac_32 release/geiss_mac_64
 
