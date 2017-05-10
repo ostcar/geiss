@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/ostcar/geiss/asgi"
 
@@ -47,7 +46,6 @@ func readWebsocket(conn *websocket.Conn, read chan websocketMessage) {
 		// Send the message to the channel
 		read <- websocketMessage{Type: t, Content: m}
 	}
-	// If an error happens, close the websocket connection.
 }
 
 // Handles an opened websocket connection by forwarding the messages between the
@@ -56,7 +54,6 @@ func websocketLoop(conn *websocket.Conn, channel string, readChan chan asgi.Mess
 	order := 0
 	// Code that is sent to the channel layer. 1006 is used, when no close message was received
 	closeCode := 1006
-	readFromWebsocket := make(chan websocketMessage)
 	closed := false
 
 	// In the end: Close the websocket connection and inform the channel layer about it.
@@ -78,12 +75,13 @@ func websocketLoop(conn *websocket.Conn, channel string, readChan chan asgi.Mess
 	}()
 
 	// Create goroutines to read from the websocket connection.
+	readFromWebsocket := make(chan websocketMessage)
 	go readWebsocket(conn, readFromWebsocket)
 
 	for {
 		select {
+		// Received a message from the client
 		case cMessage, ok := <-readFromWebsocket:
-			// Received a message from the client
 			if !ok {
 				// The channel was closed. An error happened. So close the connection
 				return
@@ -116,8 +114,8 @@ func websocketLoop(conn *websocket.Conn, channel string, readChan chan asgi.Mess
 				return
 			}
 
+		// Received a message from the channel layer
 		case message := <-readChan:
-			// Received a message from the channel layer
 			var am asgi.SendCloseAcceptMessage
 			am.Set(message)
 
@@ -135,7 +133,7 @@ func websocketLoop(conn *websocket.Conn, channel string, readChan chan asgi.Mess
 				continue
 			}
 			if err := conn.WriteMessage(t, content); err != nil {
-				log.Printf("Could not send message: %s", err)
+				log.Printf("Could not send message to a websocket clint: %s", err)
 				return
 			}
 		}
@@ -172,28 +170,28 @@ func forwardWebsocketConnection(req *http.Request, channel string) (err error) {
 
 // Handles the response after a websocket connection. Returns the websocket connection
 // if it was opend.
-func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, chan asgi.Message, error) {
+// The third return value is a channel that has to be closed when the websocket
+// connection is closed in any way. This happens never in this function so make
+// sure to close it, even when this function returns an error.
+func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*websocket.Conn, chan asgi.Message, chan<- bool, error) {
 	// Get a message from the channel layer.
 	var am asgi.SendCloseAcceptMessage
-	c := make(chan asgi.Message)
-	globalReceiveChan <- globalReceiveData{channelname: channel, receiver: c}
+	c, done := readFromChannel(channel)
 
 	// Read from the channel. Try to get a response for httpResponseWait seconds.
 	// If there is no response in this time, then break.
-	timeout := time.After(httpResponseWait)
-	select {
-	case <-timeout:
-		return nil, nil, fmt.Errorf("did not get a response in time")
-
-	case message := <-c:
-		am.Set(message)
+	message, err := readTimeout(c, httpResponseWait)
+	if err != nil {
+		// Did not receive a message. Close the done-channel and
+		return nil, nil, done, fmt.Errorf("could not read from channel %s: %s", channel, err)
 	}
+	am.Set(message)
 
 	if am.Text != "" || am.Bytes != nil || am.Accept {
 		// Finish the websocket handshake by upgrading the http request.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
-			return nil, nil, asgi.NewForwardError("could not upgrade the http request", err)
+			return nil, nil, done, asgi.NewForwardError("could not upgrade the http request", err)
 		}
 
 		// Send the first data, if there is one.
@@ -205,31 +203,33 @@ func receiveAccept(w http.ResponseWriter, req *http.Request, channel string) (*w
 		if err != nil {
 			conn.Close()
 			if _, ok := err.(*websocket.CloseError); !ok {
-				return nil, nil, fmt.Errorf("Client closed the connection before first message could be send")
+				return nil, nil, done, fmt.Errorf("Client closed the connection before first message could be send")
 			}
-			return nil, nil, asgi.NewForwardError("could not send first message to the websocket connection", err)
+			return nil, nil, done, asgi.NewForwardError("could not send first message to the websocket connection", err)
 		}
 
 		// The connection should be closed again.
 		if am.Close != 0 {
 			// The connection was opened but should be closed again
 			if err = conn.CloseHandler()(am.Close, ""); err != nil {
-				return nil, nil, asgi.NewForwardError("Could not close the websocket connection", err)
+				close(done)
+				return nil, nil, done, asgi.NewForwardError("Could not close the websocket connection", err)
 			}
 			// An close message was send to the client but we return the connection
-			// anyway, because the connection as to be closed after receiving the
+			// anyway, because the connection has to be closed after receiving the
 			// close message from the client.
 		}
-		return conn, c, nil
+		return conn, c, done, nil
 	}
 
 	// If we are here, then the websocket connection should not be opened
 	if am.Close == 0 {
 		// At this point, close has to be set.
-		return nil, nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
+		return nil, nil, nil, fmt.Errorf("Got an send/close/accept message with all fields set to nil")
 	}
 	w.WriteHeader(403)
-	return nil, nil, nil
+	close(done)
+	return nil, nil, done, nil
 }
 
 // Handels an request that wants to be upgraded to a websocket connection.
@@ -252,7 +252,8 @@ func asgiWebsocketHandler(w http.ResponseWriter, req *http.Request) (err error) 
 
 	// Try to receive the answer from the channel layer and open the websocket
 	// connection, if it tells us to do.
-	conn, readChan, err := receiveAccept(w, req, channelname)
+	conn, readChan, done, err := receiveAccept(w, req, channelname)
+	defer close(done)
 	if err != nil {
 		return fmt.Errorf("could not establish websocket connection: %s", err)
 	}

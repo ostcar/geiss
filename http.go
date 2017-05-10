@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -121,13 +122,16 @@ func sendMoreContent(body io.Reader, channel string) (err error) {
 
 // Receives a http response from the channel layer and writes it to the http response.
 func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
-	c := make(chan asgi.Message)
-	defer close(c)
-	globalReceiveChan <- globalReceiveData{channelname: channel, receiver: c}
+	// Register the asgi channel to listen on.
+	c, done := readFromChannel(channel)
+	defer close(done)
 
 	// Wait for the response
-	//TODO Use a timeout
-	message := <-c
+	message, err := readTimeout(c, httpResponseWait)
+	if err != nil {
+		return fmt.Errorf("Can not read from channel %s: %s", channel, err)
+	}
+
 	var rm asgi.ResponseMessage
 	rm.Set(message)
 
@@ -146,8 +150,11 @@ func receiveHTTPResponse(w http.ResponseWriter, channel string) (err error) {
 	moreContent := rm.MoreContent
 	for moreContent {
 		// Wait for the response
-		//TODO Use a timeout
-		message = <-c
+		message, err = readTimeout(c, httpResponseWait)
+		if err != nil {
+			return fmt.Errorf("Can not read from channel %s: %s", channel, err)
+		}
+
 		var rcm asgi.ResponseChunkMessage
 		rcm.Set(message)
 

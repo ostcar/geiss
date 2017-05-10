@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -22,6 +23,8 @@ type globalReceiveData struct {
 	receiver    chan asgi.Message
 }
 
+// Channel which is used to communicate between the functions globalReceive() and
+// readFromChannel()
 var globalReceiveChan chan globalReceiveData
 
 // globalReceive listens to the base asgi channel and dispaches the incomming
@@ -51,7 +54,14 @@ func globalReceive() {
 		select {
 		case data := <-globalReceiveChan:
 			// Someone wants to listen to a channel
-			receivers[data.channelname] = data
+			if data.receiver != nil {
+				// Got a new receiver for a channelname
+				receivers[data.channelname] = data
+			} else {
+				// Else, delete an existing channelname. delete does nothing, if the
+				// channelname does not exist.
+				delete(receivers, data.channelname)
+			}
 
 		case message := <-globalMessage:
 			// Got a global message
@@ -62,19 +72,48 @@ func globalReceive() {
 				continue
 			}
 			// Send the message to the receiver.
-			// This has to happen in a seperate function, so if the channel is closed,
-			// we can handle the panic.
-			// The receiver has to make sure to listen to the channel, in othercase,
-			// this is a deadlock!
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// The channel was closed. So it is not needed anymore
-						delete(receivers, message.channelname)
-					}
-				}()
-				receiver.receiver <- message.message
-			}()
+			// Do not block. Only try to send the message for one second.
+			go func(receiver globalReceiveData, m asgi.Message) {
+				timeout := time.After(time.Second)
+				select {
+				case receiver.receiver <- m:
+				case <-timeout:
+					log.Printf(
+						"Tried to send a message from %s to a receiver but it was not read. This should never happen. The message was %s",
+						receiver.channelname,
+						m,
+					)
+				}
+			}(receiver, message.message)
 		}
 	}
+}
+
+// readFromChannel registers a asgi channelname. It returns two (go-)channels.
+// The first one will send the messages received on the registered asgi channel
+// The second should be closed by the caller to unregister the channel.
+func readFromChannel(channelname string) (messages chan asgi.Message, done chan bool) {
+	messages = make(chan asgi.Message)
+	done = make(chan bool)
+	go func() {
+		// Wait until the done channel was closed
+		<-done
+		// then send a message to globalReceiveChan to remove the channel from the list
+		// of receivers
+		globalReceiveChan <- globalReceiveData{channelname: channelname}
+	}()
+	globalReceiveChan <- globalReceiveData{channelname: channelname, receiver: messages}
+	return
+}
+
+// readTimeout reads from the given channel for Duration. Returns the received
+// message. If timeout happens first, then returns an error
+func readTimeout(c chan asgi.Message, t time.Duration) (m asgi.Message, err error) {
+	timeout := time.After(t)
+	select {
+	case m = <-c:
+	case <-timeout:
+		err = fmt.Errorf("could not receive a message in time")
+	}
+	return
 }
