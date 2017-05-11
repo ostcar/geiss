@@ -83,6 +83,8 @@ func globalReceive() {
 						receiver.channelname,
 						m,
 					)
+					// TODO: Should we delete the receiver with the following line?
+					// globalReceiveChan <- globalReceiveData{channelname: receiver.channelname}
 				}
 			}(receiver, message.message)
 		}
